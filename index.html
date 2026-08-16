@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Investment Ops — Sala de Control</title>
+<style>
+  :root{
+    --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  html[data-theme="dark"]{
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19; --surface-2:#212120;
+    --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --baseline:#383835; --hairline:rgba(255,255,255,.10);
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+    --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+    --delta-up:#0ca30c;
+    --accent:#3987e5;
+    --glow: 0 0 24px rgba(57,135,229,.18);
+  }
+  html[data-theme="light"]{
+    color-scheme: light;
+    --page:#f9f9f7; --surface:#fcfcfb; --surface-2:#f0efec;
+    --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --baseline:#c3c2b7; --hairline:rgba(11,11,11,.10);
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300; --s7:#4a3aa7; --s8:#e34948;
+    --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+    --delta-up:#006300;
+    --accent:#2a78d6;
+    --glow: none;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:var(--font); background:var(--page); color:var(--ink);
+    background-image: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(57,135,229,.07), transparent),
+      linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size:auto, 48px 48px, 48px 48px;
+    background-attachment:fixed;
+    min-height:100vh;
+  }
+  html[data-theme="light"] body{background-image:none}
+
+  .wrap{max-width:1200px; margin:0 auto; padding:0 20px 80px}
+
+  /* ── Topbar ── */
+  .topbar{display:flex; align-items:center; gap:14px; padding:18px 0; flex-wrap:wrap}
+  .logo{display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.14em; font-size:15px}
+  .logo .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--s1),var(--s7));
+    display:grid;place-items:center;color:#fff;font-size:15px;box-shadow:var(--glow)}
+  .logo small{display:block;font-weight:400;letter-spacing:.28em;font-size:9px;color:var(--muted)}
+  .spacer{flex:1}
+  .statuspill{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2);
+    border:1px solid var(--hairline);border-radius:999px;padding:6px 14px;background:var(--surface)}
+  .pulse{width:8px;height:8px;border-radius:50%;background:var(--good);position:relative}
+  .pulse.err{background:var(--critical)} .pulse.idle{background:var(--muted)}
+  .pulse::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1px solid currentColor;
+    color:inherit;opacity:.5;animation:ping 2s ease-out infinite}
+  .pulse{color:var(--good)} .pulse.err{color:var(--critical)} .pulse.idle{animation:none;color:var(--muted)}
+  @keyframes ping{0%{transform:scale(.6);opacity:.6}100%{transform:scale(1.6);opacity:0}}
+  .iconbtn{border:1px solid var(--hairline);background:var(--surface);color:var(--ink-2);border-radius:10px;
+    padding:8px 12px;cursor:pointer;font-size:13px;font-family:var(--font)}
+  .iconbtn:hover{color:var(--ink);border-color:var(--muted)}
+
+  /* ── Tabs ── */
+  .tabs{display:flex;gap:4px;border:1px solid var(--hairline);background:var(--surface);border-radius:12px;
+    padding:4px;overflow-x:auto;position:sticky;top:10px;z-index:40;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+  html[data-theme="light"] .tabs{box-shadow:0 4px 16px rgba(0,0,0,.06)}
+  .tab{flex:1;min-width:max-content;border:none;background:transparent;color:var(--muted);font-family:var(--font);
+    font-size:12px;letter-spacing:.12em;text-transform:uppercase;padding:9px 16px;border-radius:9px;cursor:pointer;
+    transition:all .15s}
+  .tab:hover{color:var(--ink-2)}
+  .tab.on{background:var(--surface-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--hairline)}
+  .tab .n{display:inline-block;margin-left:6px;font-size:10px;color:var(--accent);font-weight:700}
+
+  section.view{display:none;margin-top:26px;animation:fadein .25s ease}
+  section.view.on{display:block}
+  @keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .card{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:20px}
+  .card + .card{margin-top:16px}
+  .kicker{font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+  h2.title{margin:0 0 4px;font-size:20px;font-weight:700}
+  .meta{font-size:12px;color:var(--muted)}
+
+  /* stat tiles */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+  .tile{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:16px 18px;position:relative;overflow:hidden}
+  .tile::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),transparent)}
+  .tile .lbl{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  .tile .val{font-size:26px;font-weight:700;margin-top:6px}
+  .tile .sub{font-size:12px;color:var(--ink-2);margin-top:2px}
+
+  /* agent cards */
+  .agentgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+  .agent{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:18px;cursor:pointer;
+    transition:transform .15s, border-color .15s;position:relative;overflow:hidden}
+  .agent:hover{transform:translateY(-2px);border-color:var(--muted)}
+  .agent::before{content:"";position:absolute;top:0;left:0;bottom:0;width:3px;background:var(--ac)}
+  .agent .head{display:flex;align-items:center;gap:10px}
+  .agent .chip{width:34px;height:34px;border-radius:9px;background:color-mix(in srgb, var(--ac) 18%, transparent);
+    color:var(--ac);display:grid;place-items:center;font-size:16px}
+  .agent .nm{font-weight:700;font-size:15px}
+  .agent .rl{font-size:11px;color:var(--muted)}
+  .agent .scorebadge{margin-left:auto;font-size:12px;font-weight:700;border:1px solid var(--hairline);
+    border-radius:999px;padding:3px 10px;color:var(--ink-2)}
+  .agent .last{margin-top:12px;font-size:13px;color:var(--ink-2);line-height:1.45;display:-webkit-box;
+    -webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .agent .foot{margin-top:10px;font-size:11px;color:var(--muted)}
+
+  /* opportunities */
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .fbtn{border:1px solid var(--hairline);background:var(--surface);color:var(--ink-2);border-radius:999px;
+    padding:6px 14px;font-size:12px;cursor:pointer;font-family:var(--font)}
+  .fbtn.on{background:var(--surface-2);color:var(--ink);border-color:var(--muted)}
+  .opp{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:18px;margin-bottom:12px}
+  .opp .row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .opp .sym{font-weight:700;font-size:15px}
+  .opp .tag{font-size:10px;letter-spacing:.12em;text-transform:uppercase;border-radius:6px;padding:3px 8px;
+    background:color-mix(in srgb, var(--ac) 16%, transparent);color:var(--ac)}
+  .badge{font-size:11px;font-weight:600;border-radius:999px;padding:3px 10px;display:inline-flex;align-items:center;gap:5px}
+  .badge.abierta{background:color-mix(in srgb, var(--s1) 15%, transparent);color:var(--s1)}
+  .badge.acierto{background:color-mix(in srgb, var(--good) 15%, transparent);color:var(--good)}
+  .badge.error{background:color-mix(in srgb, var(--critical) 15%, transparent);color:var(--critical)}
+  .badge.caducada{background:var(--surface-2);color:var(--muted)}
+  .conv{margin-left:auto;display:flex;gap:3px;align-items:center}
+  .conv i{width:8px;height:8px;border-radius:2px;background:var(--surface-2);display:block}
+  .conv i.f{background:var(--ac)}
+  .opp .thesis{margin-top:10px;font-size:13.5px;color:var(--ink-2);line-height:1.5}
+  .opp .risks{margin-top:8px;font-size:12.5px;color:var(--muted);line-height:1.45}
+  .opp .foot{margin-top:10px;font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
+
+  /* tables */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);text-align:left;
+    padding:8px 10px;border-bottom:1px solid var(--hairline)}
+  td{padding:9px 10px;border-bottom:1px solid var(--hairline);color:var(--ink-2)}
+  td.num, th.num{text-align:right;font-variant-numeric:tabular-nums}
+  td:first-child{color:var(--ink);font-weight:600}
+  tr:hover td{background:color-mix(in srgb, var(--surface-2) 60%, transparent)}
+
+  /* charts */
+  .chartbox{margin-top:6px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0 4px;font-size:12px;color:var(--ink-2)}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:5px;vertical-align:-1px}
+  svg text{font-family:var(--font)}
+  .tooltip{position:fixed;pointer-events:none;background:var(--surface-2);border:1px solid var(--hairline);
+    border-radius:10px;padding:8px 12px;font-size:12px;color:var(--ink);z-index:100;display:none;
+    box-shadow:0 8px 24px rgba(0,0,0,.35);max-width:260px}
+  .tooltip .t1{font-weight:700}.tooltip .t2{color:var(--ink-2);margin-top:2px}
+
+  /* markdown */
+  .md{font-size:14px;line-height:1.65;color:var(--ink-2)}
+  .md h1,.md h2,.md h3{color:var(--ink);margin:18px 0 8px;line-height:1.3}
+  .md h1{font-size:19px}.md h2{font-size:16px}.md h3{font-size:14px}
+  .md p{margin:8px 0}
+  .md ul,.md ol{margin:8px 0;padding-left:22px}
+  .md li{margin:4px 0}
+  .md strong{color:var(--ink)}
+  .md code{background:var(--surface-2);border-radius:5px;padding:1px 6px;font-size:12.5px}
+  .md a{color:var(--accent)}
+  .md blockquote{border-left:3px solid var(--accent);margin:10px 0;padding:2px 14px;color:var(--muted)}
+  .md hr{border:none;border-top:1px solid var(--hairline);margin:14px 0}
+
+  .hl{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+  .hl span{font-size:12px;border:1px solid var(--hairline);border-radius:999px;padding:5px 12px;color:var(--ink-2);
+    background:var(--surface-2)}
+  .hl span::before{content:"◆ ";color:var(--accent);font-size:10px}
+
+  /* modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:80;display:none;
+    align-items:flex-start;justify-content:center;padding:5vh 16px;overflow:auto}
+  .modal.on{display:flex}
+  .modal .box{background:var(--surface);border:1px solid var(--hairline);border-radius:16px;max-width:760px;
+    width:100%;padding:26px;position:relative}
+  .modal .x{position:absolute;top:14px;right:14px}
+
+  .empty{text-align:center;color:var(--muted);padding:44px 20px;font-size:13.5px;line-height:1.6}
+  .empty .big{font-size:30px;margin-bottom:8px;opacity:.6}
+  .select{border:1px solid var(--hairline);background:var(--surface);color:var(--ink);font-family:var(--font);
+    border-radius:10px;padding:7px 12px;font-size:13px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:800px){.grid2{grid-template-columns:1fr}}
+  .runrow{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--hairline);font-size:13px}
+  .runrow .dot{width:9px;height:9px;border-radius:50%}
+  .footer{margin-top:40px;text-align:center;font-size:11px;color:var(--muted);letter-spacing:.08em}
+  #loading{text-align:center;padding:80px 0;color:var(--muted);letter-spacing:.2em;font-size:12px;text-transform:uppercase}
+  .scanner{width:220px;height:2px;background:var(--surface-2);margin:18px auto 0;border-radius:2px;overflow:hidden}
+  .scanner i{display:block;width:60px;height:100%;background:var(--accent);animation:scan 1.2s ease-in-out infinite alternate}
+  @keyframes scan{from{transform:translateX(0)}to{transform:translateX(160px)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="logo">
+      <div class="mark">▲</div>
+      <div>INVESTMENT&nbsp;OPS<small>EQUIPO DE AGENTES · v1</small></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="statuspill"><span class="pulse idle" id="statusdot"></span><span id="statustext">Conectando…</span></div>
+    <button class="iconbtn" id="refresh" title="Actualizar">⟳</button>
+    <button class="iconbtn" id="themebtn" title="Tema">◐</button>
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-v="briefing">Briefing</button>
+    <button class="tab" data-v="agentes">Agentes</button>
+    <button class="tab" data-v="oportunidades">Oportunidades<span class="n" id="n-opps"></span></button>
+    <button class="tab" data-v="cartera">Cartera</button>
+    <button class="tab" data-v="marcador">Marcador</button>
+    <button class="tab" data-v="registro">Registro</button>
+  </nav>
+
+  <div id="loading">Sincronizando con el equipo<div class="scanner"><i></i></div></div>
+
+  <section class="view" id="v-briefing"></section>
+  <section class="view" id="v-agentes"></section>
+  <section class="view" id="v-oportunidades"></section>
+  <section class="view" id="v-cartera"></section>
+  <section class="view" id="v-marcador"></section>
+  <section class="view" id="v-registro"></section>
+
+  <div class="footer">INVESTMENT OPS · información generada por agentes de IA · no constituye asesoramiento financiero</div>
+</div>
+
+<div class="modal" id="modal"><div class="box">
+  <button class="iconbtn x" onclick="closeModal()">✕</button>
+  <div id="modalbody"></div>
+</div></div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+/* ═══════════ CONFIG ═══════════ */
+const API = "https://yukrbehehvjzacazckpl.supabase.co/functions/v1/it-panel";
+const KEY = (function(){ try{ const p = new URLSearchParams(location.search).get("k"); if(p){ localStorage.setItem("itops_k", p); return p; } return localStorage.getItem("itops_k") || ""; }catch(e){ return new URLSearchParams(location.search).get("k") || ""; } })();
+const PANEL_URL = API + "?k=" + KEY;
+
+const AGENTS = {
+  acciones:        {nm:"Aegis",   rol:"Especialista en Acciones",     icon:"◈", c:"var(--s1)"},
+  etfs:            {nm:"Vector",  rol:"Especialista en ETFs",         icon:"⬡", c:"var(--s2)"},
+  renta_fija:      {nm:"Atlas",   rol:"Renta Fija · Bonos",           icon:"▤", c:"var(--s3)"},
+  private_markets: {nm:"Umbra",   rol:"Private Markets",              icon:"◮", c:"var(--s4)"},
+  crypto:          {nm:"Cipher",  rol:"Especialista en Crypto",       icon:"⬢", c:"var(--s5)"},
+  datos:           {nm:"Ledger",  rol:"Datos de Cartera (solo lectura)", icon:"▦", c:"var(--s6)"},
+  jefe:            {nm:"Nexus",   rol:"Jefe de Equipo · CIO",         icon:"◉", c:"var(--s7)"}
+};
+const CLASSES = {acciones:"Acciones", etfs:"ETFs", renta_fija:"Renta fija", private_markets:"Private markets", crypto:"Crypto", cash:"Liquidez", otros:"Otros"};
+const CLASSCOLOR = {acciones:"var(--s1)", etfs:"var(--s2)", renta_fija:"var(--s3)", private_markets:"var(--s4)", crypto:"var(--s5)", cash:"var(--s6)", otros:"var(--s7)"};
+
+let DATA = null;
+let oppFilter = {status:"todas", agent:"todos"};
+</script>
+<script>
+/* ═══════════ UTILS ═══════════ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const fmtN = (n,d=2) => n==null?"—":Number(n).toLocaleString("es-ES",{minimumFractionDigits:0,maximumFractionDigits:d});
+const fmtEUR = n => n==null?"—":Number(n).toLocaleString("es-ES",{style:"currency",currency:"EUR",maximumFractionDigits:0});
+const fmtDate = s => s?new Date(s).toLocaleString("es-ES",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—";
+const fmtDay = s => s?new Date(s).toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long"}):"—";
+
+/* minimal safe markdown */
+function md(src){
+  if(!src) return "";
+  let t = esc(src).replace(/\r/g,"");
+  t = t.replace(/^### (.*)$/gm,"<h3>$1</h3>").replace(/^## (.*)$/gm,"<h2>$1</h2>").replace(/^# (.*)$/gm,"<h1>$1</h1>");
+  t = t.replace(/^\s*---+\s*$/gm,"<hr>");
+  t = t.replace(/^> ?(.*)$/gm,"<blockquote>$1</blockquote>");
+  t = t.replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>").replace(/\*([^*\n]+)\*/g,"<em>$1</em>");
+  t = t.replace(/`([^`]+)`/g,"<code>$1</code>");
+  t = t.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // lists
+  t = t.replace(/((?:^[-*] .*\n?)+)/gm, m => "<ul>"+m.trim().split(/\n/).map(l=>"<li>"+l.replace(/^[-*] /,"")+"</li>").join("")+"</ul>");
+  t = t.replace(/((?:^\d+\. .*\n?)+)/gm, m => "<ol>"+m.trim().split(/\n/).map(l=>"<li>"+l.replace(/^\d+\. /,"")+"</li>").join("")+"</ol>");
+  // paragraphs
+  t = t.split(/\n{2,}/).map(b => /^<(h\d|ul|ol|blockquote|hr)/.test(b.trim()) ? b : (b.trim()?"<p>"+b.trim().replace(/\n/g,"<br>")+"</p>":"")).join("\n");
+  return t;
+}
+
+/* tooltip */
+const tip = $("#tooltip");
+function showTip(e, html){ tip.innerHTML = html; tip.style.display="block"; moveTip(e); }
+function moveTip(e){ const w=tip.offsetWidth; let x=e.clientX+14; if(x+w>innerWidth-10)x=e.clientX-w-14; tip.style.left=x+"px"; tip.style.top=(e.clientY+14)+"px"; }
+function hideTip(){ tip.style.display="none"; }
+
+/* modal */
+function openModal(html){ $("#modalbody").innerHTML = html; $("#modal").classList.add("on"); }
+function closeModal(){ $("#modal").classList.remove("on"); }
+$("#modal").addEventListener("click", e => { if(e.target.id==="modal") closeModal(); });
+
+/* theme */
+$("#themebtn").onclick = () => {
+  const h=document.documentElement;
+  h.dataset.theme = h.dataset.theme==="dark"?"light":"dark";
+  if(DATA) renderAll();
+};
+
+/* tabs */
+$("#tabs").addEventListener("click", e => {
+  const b = e.target.closest(".tab"); if(!b) return;
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t===b));
+  document.querySelectorAll("section.view").forEach(s=>s.classList.toggle("on", s.id==="v-"+b.dataset.v));
+});
+
+/* ═══════════ DATA ═══════════ */
+async function load(){
+  if(!KEY){
+    $("#loading").style.display="block";
+    $("#loading").innerHTML = "Falta la clave de acceso.<br><br><span style='font-size:12px;text-transform:none;letter-spacing:0'>Abre el panel con tu enlace completo (el que termina en <code>?k=\u2026</code>). Solo hace falta una vez por dispositivo; despu\u00e9s queda guardada.</span>";
+    return;
+  }
+  try{
+    const r = await fetch(`${API}/data?k=${KEY}`);
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    DATA = await r.json();
+    $("#loading").style.display="none";
+    document.querySelector('section.view.on') || $("#v-briefing").classList.add("on");
+    renderAll();
+    const lastRun = (DATA.runs||[])[0];
+    const dot=$("#statusdot");
+    if(lastRun){
+      dot.className = "pulse " + (lastRun.status==="failed"?"err":lastRun.status==="running"?"":"");
+      $("#statustext").textContent = (lastRun.status==="running"?"Equipo trabajando · ":"Última ronda: ") + fmtDate(lastRun.finished_at||lastRun.started_at);
+    } else {
+      dot.className="pulse idle";
+      $("#statustext").textContent="Sistema listo · sin rondas aún";
+    }
+  }catch(err){
+    $("#statusdot").className="pulse err";
+    $("#statustext").textContent = DATA ? "Sin conexión ahora mismo · mostrando últimos datos" : "Sin conexión";
+    if(!DATA){
+      $("#loading").style.display="block";
+      $("#loading").innerHTML = "No se han podido cargar los datos ("+esc(err.message)+").<br><br><button class='iconbtn' onclick='load()'>Reintentar</button><br><br><span style='font-size:11px;text-transform:none;letter-spacing:0'>Este panel se abre con el archivo dashboard.html en tu navegador (si Safari falla, usa Chrome). No lo compartas: contiene tu clave de acceso.</span>";
+    }
+  }
+}
+$("#refresh").onclick = load;
+
+function scores(){
+  const s={}; Object.keys(AGENTS).forEach(a=>s[a]={score:0,pos:0,neg:0,events:[]});
+  (DATA.score_events||[]).forEach(e=>{ if(!s[e.agent])return; s[e.agent].score+=e.delta; e.delta>=0?s[e.agent].pos++:s[e.agent].neg++; s[e.agent].events.push(e); });
+  return s;
+}
+
+function renderAll(){ rBriefing(); rAgentes(); rOpps(); rCartera(); rMarcador(); rRegistro();
+  const open=(DATA.opportunities||[]).filter(o=>o.status==="abierta").length;
+  $("#n-opps").textContent = open||""; }
+
+/* ═══════════ BRIEFING ═══════════ */
+function rBriefing(){
+  const v=$("#v-briefing"); const bs=DATA.briefings||[];
+  if(!bs.length){ v.innerHTML = `<div class="card"><div class="empty"><div class="big">◉</div>
+    El jefe de equipo aún no ha emitido su primer briefing.<br>La primera ronda diaria lo generará automáticamente.</div></div>`; return; }
+  const sel = bs.length>1 ? `<select class="select" id="bsel" style="margin-left:auto">${bs.map((b,i)=>`<option value="${i}">${fmtDay(b.created_at)}</option>`).join("")}</select>` : "";
+  const b = bs[window.__bi||0];
+  const hls = (b.highlights||[]).map(h=>`<span>${esc(typeof h==="string"?h:h.text||"")}</span>`).join("");
+  v.innerHTML = `<div class="card">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div><p class="kicker">Briefing del jefe · Nexus ◉</p>
+      <h2 class="title">${esc(b.title)}</h2>
+      <div class="meta">${fmtDay(b.created_at)} · ${fmtDate(b.created_at)}</div></div>${sel}
+    </div>
+    ${hls?`<div class="hl">${hls}</div>`:""}
+    <div class="md">${md(b.content_md)}</div>
+  </div>`;
+  const s=$("#bsel"); if(s){ s.value=window.__bi||0; s.onchange=()=>{window.__bi=+s.value; rBriefing();}; }
+}
+
+/* ═══════════ AGENTES ═══════════ */
+function rAgentes(){
+  const v=$("#v-agentes"); const sc=scores();
+  const reports=DATA.reports||[];
+  v.innerHTML = `<div class="agentgrid">` + Object.entries(AGENTS).map(([k,a])=>{
+    const rs = reports.filter(r=>r.agent===k);
+    const last = rs[0];
+    const s = sc[k];
+    return `<div class="agent" style="--ac:${a.c}" onclick="agentModal('${k}')">
+      <div class="head"><div class="chip">${a.icon}</div>
+        <div><div class="nm">${a.nm}</div><div class="rl">${esc(a.rol)}</div></div>
+        <div class="scorebadge" title="Marcador">${s.score>0?"+":""}${s.score} pts</div></div>
+      <div class="last">${last?esc(last.title)+" — "+esc(last.content_md.replace(/[#*>`-]/g," ").slice(0,160)):"Sin informes todavía. Se activará en la primera ronda diaria."}</div>
+      <div class="foot">${last?fmtDate(last.created_at)+" · "+rs.length+" informe(s)":"—"} · pulsa para ver todo</div>
+    </div>`;
+  }).join("") + `</div>`;
+}
+function agentModal(k){
+  const a=AGENTS[k]; const rs=(DATA.reports||[]).filter(r=>r.agent===k);
+  const s=scores()[k];
+  openModal(`<p class="kicker" style="color:${a.c}">${a.icon} ${a.nm} · ${esc(a.rol)}</p>
+    <h2 class="title">Historial completo</h2>
+    <div class="meta">Marcador: ${s.score>0?"+":""}${s.score} pts · ${s.pos} aciertos valorados · ${s.neg} penalizaciones</div>
+    ${rs.length?rs.map(r=>`<div class="card" style="margin-top:14px"><div class="meta">${fmtDate(r.created_at)}</div>
+      <h3 style="margin:4px 0 8px">${esc(r.title)}</h3><div class="md">${md(r.content_md)}</div></div>`).join(""):
+      `<div class="empty">Aún no hay informes de este agente.</div>`}`);
+}
+
+/* ═══════════ OPORTUNIDADES ═══════════ */
+function rOpps(){
+  const v=$("#v-oportunidades"); const all=DATA.opportunities||[];
+  const stFilters=["todas","abierta","acierto","error","caducada"];
+  const agents=["todos",...new Set(all.map(o=>o.agent))];
+  let list=all.filter(o=>(oppFilter.status==="todas"||o.status===oppFilter.status)&&(oppFilter.agent==="todos"||o.agent===oppFilter.agent));
+  v.innerHTML = `<div class="filters">
+      ${stFilters.map(s=>`<button class="fbtn ${oppFilter.status===s?"on":""}" onclick="setOppF('status','${s}')">${s[0].toUpperCase()+s.slice(1)}</button>`).join("")}
+      <span style="width:10px"></span>
+      ${agents.map(ag=>`<button class="fbtn ${oppFilter.agent===ag?"on":""}" onclick="setOppF('agent','${ag}')">${ag==="todos"?"Todos los agentes":(AGENTS[ag]?.nm||ag)}</button>`).join("")}
+    </div>` +
+    (list.length?list.map(o=>{
+      const a=AGENTS[o.agent]||{nm:o.agent,c:"var(--s8)",icon:"◇"};
+      const conv=o.conviction||0;
+      return `<div class="opp" style="--ac:${a.c}">
+        <div class="row1"><span class="sym">${esc(o.name)}${o.symbol?` <span style="color:var(--muted);font-weight:400">· ${esc(o.symbol)}</span>`:""}</span>
+          <span class="tag">${a.icon} ${a.nm}</span>
+          <span class="badge ${o.status}">${o.status==="abierta"?"● Abierta":o.status==="acierto"?"✓ Acierto":o.status==="error"?"✕ Error":"○ Caducada"}</span>
+          <span class="conv" title="Convicción ${conv}/5">${[1,2,3,4,5].map(i=>`<i class="${i<=conv?"f":""}"></i>`).join("")}</span></div>
+        <div class="thesis"><strong style="color:var(--ink)">Tesis:</strong> ${esc(o.thesis)}</div>
+        ${o.risks?`<div class="risks"><strong>Riesgos:</strong> ${esc(o.risks)}</div>`:""}
+        ${o.outcome_note?`<div class="risks"><strong>Resolución:</strong> ${esc(o.outcome_note)}</div>`:""}
+        <div class="foot"><span>${fmtDate(o.opened_at)}</span>${o.horizon?`<span>Horizonte: ${esc(o.horizon)}</span>`:""}
+          ${o.entry_ref_price?`<span>Ref. entrada: ${fmtN(o.entry_ref_price)} ${esc(o.ref_currency||"")}</span>`:""}
+          <span>${CLASSES[o.asset_class]||o.asset_class}</span></div>
+      </div>`;
+    }).join(""):`<div class="card"><div class="empty"><div class="big">◈</div>No hay oportunidades con estos filtros.<br>Los especialistas registrarán aquí cada oportunidad justificada que encuentren.</div></div>`);
+}
+function setOppF(k,val){ oppFilter[k]=val; rOpps(); }
+
+/* ═══════════ CARTERA ═══════════ */
+function rCartera(){
+  const v=$("#v-cartera"); const ps=DATA.positions||[]; const snaps=(DATA.snapshots||[]).slice().reverse();
+  const total = ps.reduce((s,p)=>s+(Number(p.current_value)||((p.current_price||p.buy_price)*p.quantity)||0),0);
+  const cost = ps.reduce((s,p)=>s+((p.buy_price*p.quantity)||0),0);
+  const pnl = total-cost; const pct = cost? (pnl/cost*100):0;
+  const byClass={};
+  ps.forEach(p=>{ const val=Number(p.current_value)||((p.current_price||p.buy_price)*p.quantity)||0; byClass[p.asset_class]=(byClass[p.asset_class]||0)+val; });
+
+  const lastUpd = ps.length? ps.map(p=>p.updated_at).sort().slice(-1)[0] : null;
+  v.innerHTML = `
+  <div class="tiles">
+    <div class="tile"><div class="lbl">Valor total</div><div class="val">${fmtEUR(total)}</div>
+      <div class="sub" style="color:${pnl>=0?"var(--delta-up)":"var(--critical)"}">${pnl>=0?"▲":"▼"} ${fmtEUR(Math.abs(pnl))} (${fmtN(pct,1)}%)</div></div>
+    <div class="tile"><div class="lbl">Posiciones</div><div class="val">${ps.length}</div><div class="sub">${Object.keys(byClass).length} clases de activo</div></div>
+    <div class="tile"><div class="lbl">Coste base</div><div class="val">${fmtEUR(cost)}</div><div class="sub">precio de compra agregado</div></div>
+    <div class="tile"><div class="lbl">Actualizado</div><div class="val" style="font-size:17px">${fmtDate(lastUpd)}</div><div class="sub">por Ledger ▦ (solo lectura)</div></div>
+  </div>
+  ${snaps.length>1?`<div class="card"><p class="kicker">Evolución del valor</p><div class="chartbox" id="evochart"></div></div>`:""}
+  ${ps.length?`<div class="card"><p class="kicker">Distribución por clase de activo</p><div class="chartbox" id="allocchart"></div></div>
+  <div class="card"><p class="kicker">Posiciones</p><div style="overflow-x:auto"><table>
+    <thead><tr><th>Activo</th><th>Clase</th><th>Plataforma</th><th class="num">Cantidad</th><th class="num">P. compra</th><th class="num">P. actual</th><th class="num">Valor</th></tr></thead>
+    <tbody>${ps.map(p=>{
+      const val=Number(p.current_value)||((p.current_price||p.buy_price)*p.quantity)||0;
+      return `<tr><td>${esc(p.name)}${p.symbol?` <span style="color:var(--muted)">${esc(p.symbol)}</span>`:""}</td>
+      <td><span style="color:${CLASSCOLOR[p.asset_class]||"var(--muted)"}">●</span> ${CLASSES[p.asset_class]||p.asset_class}</td>
+      <td>${esc(p.platform||"—")}</td><td class="num">${fmtN(p.quantity,4)}</td>
+      <td class="num">${fmtN(p.buy_price)}</td><td class="num">${fmtN(p.current_price)}</td>
+      <td class="num">${fmtEUR(val)}</td></tr>`;}).join("")}</tbody>
+  </table></div></div>`:
+  `<div class="card"><div class="empty"><div class="big">▦</div>Todavía no hay posiciones registradas.<br>
+   Dile a Claude tus posiciones (activo, cantidad, precio de compra y plataforma) y Ledger las mantendrá al día.</div></div>`}`;
+  if(snaps.length>1) lineChart($("#evochart"), snaps);
+  if(ps.length) allocChart($("#allocchart"), byClass, total);
+}
+
+function allocChart(el, byClass, total){
+  const entries = Object.entries(byClass).sort((a,b)=>b[1]-a[1]);
+  const W=el.clientWidth||800, H=64, bh=28, y=8;
+  let x=0;
+  let segs="";
+  entries.forEach(([k,val])=>{
+    const w=Math.max((val/total)*W-2,2);
+    segs+=`<rect x="${x}" y="${y}" width="${w}" height="${bh}" rx="4" fill="${cssVal(CLASSCOLOR[k]||"var(--s7)")}"
+      data-tip="<div class='t1'>${CLASSES[k]||k}</div><div class='t2'>${fmtEUR(val)} · ${fmtN(val/total*100,1)}%</div>"></rect>`;
+    if(val/total>0.12) segs+=`<text x="${x+8}" y="${y+bh/2+4}" font-size="11" fill="#fff" font-weight="600">${fmtN(val/total*100,0)}%</text>`;
+    x+=w+2;
+  });
+  el.innerHTML=`<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${segs}</svg>
+    <div class="legend">${entries.map(([k,val])=>`<span><i style="background:${cssVal(CLASSCOLOR[k]||"var(--s7)")}"></i>${CLASSES[k]||k} · ${fmtEUR(val)}</span>`).join("")}</div>`;
+  hookTips(el);
+}
+
+function lineChart(el, snaps){
+  const W=el.clientWidth||800, H=180, pl=54, pr=12, pt=14, pb=26;
+  const vals=snaps.map(s=>Number(s.total_value));
+  const min=Math.min(...vals), max=Math.max(...vals);
+  const span=(max-min)||1;
+  const X=i=>pl+(W-pl-pr)*(snaps.length===1?0.5:i/(snaps.length-1));
+  const Y=v=>pt+(H-pt-pb)*(1-(v-min)/span);
+  const path=vals.map((v,i)=>`${i?"L":"M"}${X(i)},${Y(v)}`).join(" ");
+  const area=path+` L${X(vals.length-1)},${H-pb} L${X(0)},${H-pb} Z`;
+  const ink=getComputedStyle(document.body).getPropertyValue("--muted");
+  const grid=getComputedStyle(document.body).getPropertyValue("--grid");
+  const blue=cssVal("var(--s1)");
+  let gl="";
+  for(let g=0;g<=3;g++){ const yv=min+span*g/3, yy=Y(yv);
+    gl+=`<line x1="${pl}" x2="${W-pr}" y1="${yy}" y2="${yy}" stroke="${grid}" stroke-width="1"/>
+    <text x="${pl-8}" y="${yy+4}" text-anchor="end" font-size="10" fill="${ink}">${fmtN(yv/1000,1)}k</text>`; }
+  const dots=vals.map((v,i)=>`<circle cx="${X(i)}" cy="${Y(v)}" r="8" fill="transparent"
+     data-tip="<div class='t1'>${fmtEUR(v)}</div><div class='t2'>${fmtDate(snaps[i].created_at)}</div>"></circle>
+     <circle cx="${X(i)}" cy="${Y(v)}" r="3" fill="${blue}" pointer-events="none"></circle>`).join("");
+  el.innerHTML=`<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}">
+    ${gl}
+    <path d="${area}" fill="${blue}" opacity="0.10"/>
+    <path d="${path}" fill="none" stroke="${blue}" stroke-width="2"/>
+    ${dots}
+    <text x="${pl}" y="${H-6}" font-size="10" fill="${ink}">${fmtDate(snaps[0].created_at)}</text>
+    <text x="${W-pr}" y="${H-6}" text-anchor="end" font-size="10" fill="${ink}">${fmtDate(snaps.at(-1).created_at)}</text>
+  </svg>`;
+  hookTips(el);
+}
+
+/* ═══════════ MARCADOR ═══════════ */
+function rMarcador(){
+  const v=$("#v-marcador"); const sc=scores();
+  const rows=Object.entries(sc).sort((a,b)=>b[1].score-a[1].score);
+  const maxAbs=Math.max(1,...rows.map(([,s])=>Math.abs(s.score)));
+  const events=(DATA.score_events||[]);
+  v.innerHTML=`<div class="grid2">
+    <div class="card"><p class="kicker">Ranking del equipo</p>
+      ${rows.map(([k,s])=>{
+        const a=AGENTS[k]; const w=Math.abs(s.score)/maxAbs*100;
+        const col=s.score>=0?cssVal("var(--s1)"):cssVal("var(--s8)");
+        return `<div style="margin:14px 0">
+          <div style="display:flex;font-size:13px;align-items:center;gap:8px">
+            <span style="color:${a.c}">${a.icon}</span><strong>${a.nm}</strong>
+            <span style="color:var(--muted);font-size:11px">${esc(a.rol)}</span>
+            <span style="margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums">${s.score>0?"+":""}${s.score}</span></div>
+          <div style="height:8px;background:var(--surface-2);border-radius:4px;margin-top:6px;overflow:hidden;display:flex;${s.score<0?"justify-content:flex-end":""}">
+            <div style="width:${Math.max(w,2)}%;background:${col};border-radius:4px"></div></div>
+        </div>`;}).join("")}
+      <div class="meta" style="margin-top:10px">El jefe (Nexus) otorga o resta puntos según el resultado real de cada llamada de los agentes.</div>
+    </div>
+    <div class="card"><p class="kicker">Últimos movimientos del marcador</p>
+      ${events.length?events.slice(0,25).map(e=>{
+        const a=AGENTS[e.agent]||{nm:e.agent,icon:"◇",c:"var(--muted)"};
+        return `<div class="runrow"><span style="color:${a.c}">${a.icon}</span>
+          <span style="min-width:64px;font-weight:700;color:${e.delta>=0?"var(--delta-up)":"var(--critical)"}">${e.delta>0?"+":""}${e.delta} pts</span>
+          <span style="flex:1;color:var(--ink-2)">${esc(e.reason)}</span>
+          <span class="meta">${fmtDate(e.created_at)}</span></div>`;}).join(""):
+        `<div class="empty">Sin valoraciones todavía. Cuando las oportunidades se resuelvan, Nexus puntuará a cada agente aquí.</div>`}
+    </div>
+  </div>`;
+}
+
+/* ═══════════ REGISTRO ═══════════ */
+function rRegistro(){
+  const v=$("#v-registro"); const runs=DATA.runs||[]; const reports=DATA.reports||[];
+  v.innerHTML=`<div class="card"><p class="kicker">Rondas del equipo</p>
+    ${runs.length?runs.map(r=>`<div class="runrow">
+      <span class="dot" style="background:${r.status==="completed"?"var(--good)":r.status==="failed"?"var(--critical)":"var(--warning)"}"></span>
+      <span style="font-weight:600">${fmtDate(r.started_at)}</span>
+      <span style="flex:1;color:var(--ink-2)">${esc(r.summary||(r.status==="running"?"En curso…":r.status))}</span>
+      <span class="meta">${reports.filter(x=>x.run_id===r.id).length} informes</span></div>`).join(""):
+      `<div class="empty">La primera ronda diaria aparecerá aquí.</div>`}
+  </div>
+  <div class="card"><p class="kicker">Toda la información · archivo completo de informes</p>
+    ${reports.length?reports.map(r=>{
+      const a=AGENTS[r.agent]||{nm:r.agent,icon:"◇",c:"var(--muted)"};
+      return `<div class="runrow" style="cursor:pointer" onclick='reportModal("${r.id}")'>
+        <span style="color:${a.c}">${a.icon}</span><span style="min-width:70px;font-weight:600">${a.nm}</span>
+        <span style="flex:1;color:var(--ink-2)">${esc(r.title)}</span><span class="meta">${fmtDate(r.created_at)}</span></div>`;}).join(""):
+      `<div class="empty">Aquí tendrás acceso a cada informe íntegro, sin depurar.</div>`}
+  </div>`;
+}
+function reportModal(id){
+  const r=(DATA.reports||[]).find(x=>x.id===id); if(!r)return;
+  const a=AGENTS[r.agent]||{nm:r.agent,icon:"◇",c:"var(--muted)",rol:""};
+  openModal(`<p class="kicker" style="color:${a.c}">${a.icon} ${a.nm} · ${esc(a.rol||"")}</p>
+    <h2 class="title">${esc(r.title)}</h2><div class="meta">${fmtDate(r.created_at)}</div>
+    <div class="md" style="margin-top:12px">${md(r.content_md)}</div>`);
+}
+
+/* helpers */
+function cssVal(v){ // resolve var(--x) to hex for SVG attrs
+  if(!v.startsWith("var(")) return v;
+  return getComputedStyle(document.documentElement).getPropertyValue(v.slice(4,-1)).trim()||"#888";
+}
+function hookTips(el){
+  el.querySelectorAll("[data-tip]").forEach(n=>{
+    n.addEventListener("mousemove",e=>{showTip(e,n.dataset.tip);});
+    n.addEventListener("mouseleave",hideTip);
+  });
+}
+window.addEventListener("resize",()=>{ if(DATA){rCartera();} });
+
+load();
+setInterval(load, 5*60*1000); // auto-refresh cada 5 min
+</script>
+</body>
+</html>
