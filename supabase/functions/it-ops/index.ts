@@ -277,6 +277,26 @@ const POST_ROUTES: Record<string, Handler> = {
     return { snapshot_id: row.id };
   },
 
+  // Cartera ──────────────────────────────────────────────────────────────────
+  // Solo precio y valor. Cantidad, precio de compra, nombre y clase NO se tocan
+  // desde aquí a propósito: un agente no debe poder reescribir la cartera.
+  "/position/price": async (b) => {
+    const id = str(b, "id", false);
+    const symbol = str(b, "symbol", false);
+    if (!id && !symbol) throw new BadRequest('Indica "id" o "symbol" de la posición');
+    const filtro = id ? eq("id", uuid(b, "id")!) : eq("symbol", symbol!);
+    const precio = num(b, "current_price", false);
+    const valor = num(b, "current_value", false);
+    if (precio === undefined && valor === undefined) {
+      throw new BadRequest('Indica al menos "current_price" o "current_value"');
+    }
+    const fila: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (precio !== undefined) fila.current_price = precio;
+    if (valor !== undefined) fila.current_value = valor;
+    const row = await patch("it_positions", filtro, fila);
+    return { position_id: row.id, name: row.name, current_price: row.current_price, current_value: row.current_value };
+  },
+
   // Cola de aprobación ───────────────────────────────────────────────────────
   "/approval": async (b) => {
     const row = await insert("it_approvals", {
@@ -340,6 +360,25 @@ const GET_ROUTES: Record<string, Handler> = {
   },
 
   "/agents": async () => await rest("it_agents?select=*&order=key"),
+
+  // Lo que necesita Ledger para valorar la cartera sin tocar SQL.
+  "/positions": async () => await rest("it_positions?select=*&order=asset_class,name"),
+
+  // Plan de aportación mensual (it_settings.plan_mensual).
+  "/plan": async () => {
+    const rows = await rest("it_settings?select=value&key=eq.plan_mensual&limit=1");
+    return rows?.[0]?.value ?? {};
+  },
+
+  // Oportunidades vivas: para no duplicar ideas y para que Nexus las resuelva.
+  "/opportunities": async (_b, url) => {
+    const status = oneOf(url.searchParams.get("status") ?? "abierta",
+      ["abierta", "acierto", "error", "caducada"], "status");
+    return await rest(
+      `it_opportunities?select=id,agent,asset_class,symbol,name,thesis,conviction,horizon,entry_ref_price,ref_currency,opened_at` +
+      `&status=eq.${encodeURIComponent(status!)}&order=opened_at.desc&limit=100`,
+    );
+  },
 
   "/alerts": async () => await rest("it_alerts?select=*&status=eq.activa&order=created_at.desc"),
 

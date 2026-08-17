@@ -97,6 +97,30 @@ Verifica que la ve:
 openclaw skills list | grep investment-ops
 ```
 
+## Migración desde la Routine de Claude
+
+Hasta ahora la ronda diaria la ejecutaba una **Routine de Claude**
+(`trig_01WcTFa2LK9JynBc8uEKCtRS`, "Investment Ops · Ronda diaria del equipo de agentes",
+cron `30 5 * * *` UTC = 07:30 peninsular). Cada día arrancaba una sesión de Claude que
+escribía con SQL directo a través del MCP de Supabase — por eso no aparecía nada en los
+registros de API del proyecto.
+
+La `SKILL.md` de este repo es ese mismo encargo portado: mismo equipo, mismas vigilancias
+por agente, mismas reglas de Ledger y los mismos deltas del marcador (+2 acierto, −2 error,
+0 caducada, ±1 por calidad del informe). Las diferencias son dos, y ambas a mejor:
+
+- Ya no hay SQL suelto. Se escribe por `it-ops`, que valida el cuerpo y no deja tocar
+  cantidades ni precios de compra de la cartera.
+- Aparecen la cola de aprobación y los avisos, que la Routine no tenía.
+
+**Orden de la migración** — importa, para no quedarse ningún día sin ronda:
+
+1. Copia la skill actualizada y crea la automatización en OpenClaw (abajo).
+2. Comprueba que la primera ronda automática entra bien.
+3. **Solo entonces** desactiva la Routine, o tendrás dos motores escribiendo a la vez:
+   dos `it_runs` al día, informes duplicados y el marcador de Nexus sumando dos veces por
+   la misma idea.
+
 ## 4. Programar la ronda diaria
 
 Con las Automations de OpenClaw, en lenguaje natural desde el propio chat:
@@ -158,6 +182,8 @@ contador de tareas de hoy subiendo, y al acabar la ronda en el Registro con su i
 | `POST /opportunity` · `/opportunity/resolve` | Alta y cierre de oportunidades |
 | `POST /score` | Puntos del marcador |
 | `POST /snapshot` | Foto del valor de la cartera |
+| `POST /position/price` | Actualiza precio y valor de una posición (y solo eso) |
+| `GET /positions` · `/plan` · `/opportunities` | Contexto que Ledger y Nexus necesitan leer |
 | `POST /approval` · `/approval/resolve` | Cola de aprobación |
 | `POST /alert` · `/alert/resolve` | Banner de incidencias |
 | `GET /agents` · `/approvals` · `/alerts` · `/health` | Lecturas rápidas para el chat |
