@@ -51,6 +51,54 @@ const storageUrl = (token: string) => `${SB}/storage/v1/object/public/panel/${to
 const svgShell = (token: string) =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 800 600">\n<title>Investment Ops</title>\n<rect width="100%" height="100%" fill="#0d0d0d"/>\n<text id="m" x="400" y="300" text-anchor="middle" fill="#898781" font-family="system-ui, sans-serif" font-size="14" letter-spacing="3">CARGANDO INVESTMENT OPS…</text>\n<script>//<![CDATA[\nfetch("${storageUrl(token)}",{cache:"no-store"}).then(function(r){\n  if(!r.ok){throw new Error("HTTP "+r.status);}\n  return r.text();\n}).then(function(t){\n  var b=new Blob([t],{type:"text/html"});\n  location.replace(URL.createObjectURL(b));\n}).catch(function(e){\n  var m=document.getElementById("m");\n  if(m){m.textContent="ERROR CARGANDO EL PANEL: "+e.message;}\n});\n//]]></script>\n</svg>`;
 
+const REPO = "marcferrando19/investment-ops";
+
+/**
+ * Descarga el index.html del repo probando varias fuentes.
+ * Las funciones edge salen por IPs compartidas, así que raw.githubusercontent
+ * devuelve 429 con facilidad; jsDelivr y la API de GitHub tienen otros límites.
+ * Una rama con "/" en el nombre solo viaja limpia por la API (va en query).
+ */
+async function descargarPanel(
+  ref: string,
+): Promise<{ html: string; src: string } | { error: string; intentos: string[] }> {
+  const fuentes = [
+    { url: `https://raw.githubusercontent.com/${REPO}/${ref}/index.html`, headers: {} as Record<string, string> },
+    {
+      url: `https://api.github.com/repos/${REPO}/contents/index.html?ref=${encodeURIComponent(ref)}`,
+      headers: { accept: "application/vnd.github.raw" },
+    },
+    { url: `https://cdn.jsdelivr.net/gh/${REPO}@${ref}/index.html`, headers: {} as Record<string, string> },
+  ];
+
+  const intentos: string[] = [];
+  for (const f of fuentes) {
+    for (let vuelta = 0; vuelta < 2; vuelta++) {
+      if (vuelta) await new Promise((r) => setTimeout(r, 700));
+      try {
+        const res = await fetch(f.url, {
+          headers: { "user-agent": "investment-ops-panel", "cache-control": "no-cache", ...f.headers },
+        });
+        if (!res.ok) {
+          intentos.push(`${f.url} → HTTP ${res.status}`);
+          // 4xx que no sea 429 no mejora reintentando.
+          if (res.status !== 429 && res.status < 500) break;
+          continue;
+        }
+        const html = await res.text();
+        if (!html.includes("</html>")) {
+          intentos.push(`${f.url} → no parece el panel (falta </html>)`);
+          break;
+        }
+        return { html, src: f.url };
+      } catch (e) {
+        intentos.push(`${f.url} → ${e}`);
+      }
+    }
+  }
+  return { error: "Ninguna fuente devolvió el panel. Reintenta en un minuto.", intentos };
+}
+
 Deno.serve(async (req: Request) => {
   try {
     if (req.method === "OPTIONS") return withHeaders("ok", "text/plain");
@@ -95,13 +143,9 @@ Deno.serve(async (req: Request) => {
       if (!/^[A-Za-z0-9._\/-]{1,100}$/.test(ref)) {
         return json({ error: "El parámetro ref tiene caracteres no permitidos" }, 400);
       }
-      const src = `https://raw.githubusercontent.com/marcferrando19/investment-ops/${ref}/index.html`;
-      const gres = await fetch(src, { headers: { "cache-control": "no-cache" } });
-      if (!gres.ok) return json({ error: `No se pudo leer ${src}: HTTP ${gres.status}` }, 502);
-      const html = await gres.text();
-      if (!html.includes("</html>")) {
-        return json({ error: "Lo descargado no parece el panel (falta </html>)" }, 502);
-      }
+      const fuente = await descargarPanel(ref);
+      if ("error" in fuente) return json({ error: fuente.error, intentos: fuente.intentos }, 502);
+      const { html, src } = fuente;
 
       await fetch(`${BASE}it_settings?on_conflict=key`, {
         method: "POST",
