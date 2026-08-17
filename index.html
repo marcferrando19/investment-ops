@@ -108,6 +108,54 @@
   .agent .last{margin-top:12px;font-size:13px;color:var(--ink-2);line-height:1.45;display:-webkit-box;
     -webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
   .agent .foot{margin-top:10px;font-size:11px;color:var(--muted)}
+  .agent .state{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .agent .state b{font-weight:700;letter-spacing:.14em}
+  .sdot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none}
+  .sdot.active{background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent);
+    animation:breathe 1.6s ease-in-out infinite}
+  .sdot.idle{background:var(--muted)}
+  .sdot.error{background:var(--critical);box-shadow:0 0 0 3px color-mix(in srgb, var(--critical) 22%, transparent)}
+  .sdot.offline{background:var(--baseline)}
+  @keyframes breathe{0%,100%{opacity:1}50%{opacity:.45}}
+  .agent .tcount{margin-left:auto;color:var(--ink-2)}
+
+  /* command strip */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:0 0 14px}
+  .kpi{background:var(--surface);border:1px solid var(--hairline);border-radius:12px;padding:11px 14px}
+  .kpi .lbl{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  .kpi .val{font-size:19px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+  .kpi .val.warn{color:var(--warning)} .kpi .val.ok{color:var(--good)} .kpi .val.bad{color:var(--critical)}
+
+  /* alert banner */
+  .alerts{margin:0 0 14px;display:flex;flex-direction:column;gap:8px}
+  .alertbar{display:flex;align-items:flex-start;gap:11px;border-radius:12px;padding:12px 15px;font-size:13px;
+    border:1px solid var(--ac);background:color-mix(in srgb, var(--ac) 11%, var(--surface))}
+  .alertbar .ico{color:var(--ac);font-size:14px;line-height:1.3}
+  .alertbar .msg{flex:1;color:var(--ink)}
+  .alertbar .hint{display:block;color:var(--ink-2);font-size:12px;margin-top:3px}
+  .alertbar .lv{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--ac);
+    border:1px solid var(--ac);border-radius:999px;padding:2px 9px;white-space:nowrap}
+
+  /* approvals */
+  .appr{background:var(--surface);border:1px solid var(--hairline);border-left:3px solid var(--ac);
+    border-radius:12px;padding:16px 18px;margin-bottom:11px}
+  .appr .row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .appr .ttl{font-weight:600;font-size:14.5px;flex:1;min-width:200px}
+  .prio{font-size:9px;letter-spacing:.16em;text-transform:uppercase;border-radius:5px;padding:3px 8px;font-weight:700}
+  .prio.alta{background:color-mix(in srgb, var(--critical) 16%, transparent);color:var(--critical)}
+  .prio.media{background:color-mix(in srgb, var(--warning) 16%, transparent);color:var(--warning)}
+  .prio.baja{background:var(--surface-2);color:var(--muted)}
+  .appr .det{margin-top:9px}
+  .appr .acts{display:flex;gap:8px;margin-top:13px;flex-wrap:wrap;align-items:center}
+  .abtn{border:1px solid var(--hairline);background:var(--surface-2);color:var(--ink);border-radius:9px;
+    padding:7px 16px;font-size:12.5px;cursor:pointer;font-family:var(--font);font-weight:600}
+  .abtn.ok{border-color:var(--good);color:var(--good)}
+  .abtn.ok:hover{background:color-mix(in srgb, var(--good) 16%, transparent)}
+  .abtn.no{border-color:var(--critical);color:var(--critical)}
+  .abtn.no:hover{background:color-mix(in srgb, var(--critical) 16%, transparent)}
+  .abtn:disabled{opacity:.4;cursor:not-allowed}
+  .readonly{font-size:12px;color:var(--muted);line-height:1.5}
 
   /* opportunities */
   .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
@@ -204,9 +252,13 @@
     <button class="iconbtn" id="themebtn" title="Tema">◐</button>
   </div>
 
+  <div class="kpis" id="kpis" style="display:none"></div>
+  <div class="alerts" id="alerts"></div>
+
   <nav class="tabs" id="tabs">
     <button class="tab on" data-v="briefing">Briefing</button>
     <button class="tab" data-v="agentes">Agentes</button>
+    <button class="tab" data-v="aprobaciones">Aprobaciones<span class="n" id="n-appr"></span></button>
     <button class="tab" data-v="oportunidades">Oportunidades<span class="n" id="n-opps"></span></button>
     <button class="tab" data-v="cartera">Cartera</button>
     <button class="tab" data-v="marcador">Marcador</button>
@@ -217,6 +269,7 @@
 
   <section class="view" id="v-briefing"></section>
   <section class="view" id="v-agentes"></section>
+  <section class="view" id="v-aprobaciones"></section>
   <section class="view" id="v-oportunidades"></section>
   <section class="view" id="v-cartera"></section>
   <section class="view" id="v-marcador"></section>
@@ -236,6 +289,12 @@
 const API = "https://yukrbehehvjzacazckpl.supabase.co/functions/v1/it-panel";
 const KEY = (function(){ try{ const p = new URLSearchParams(location.search).get("k"); if(p){ localStorage.setItem("itops_k", p); return p; } return localStorage.getItem("itops_k") || ""; }catch(e){ return new URLSearchParams(location.search).get("k") || ""; } })();
 const PANEL_URL = API + "?k=" + KEY;
+
+/* API de escritura (it-ops). El token de escritura es DISTINTO del de lectura:
+   solo lo lleva quien abre el panel con &w=…  Sin él, las aprobaciones se ven
+   pero no se pueden resolver desde aquí (se resuelven por WhatsApp). */
+const OPS = API.replace(/\/it-panel$/, "/it-ops");
+const WKEY = (function(){ try{ const p = new URLSearchParams(location.search).get("w"); if(p){ localStorage.setItem("itops_w", p); return p; } return localStorage.getItem("itops_w") || ""; }catch(e){ return new URLSearchParams(location.search).get("w") || ""; } })();
 
 const AGENTS = {
   acciones:        {nm:"Aegis",   rol:"Especialista en Acciones",     icon:"◈", c:"var(--s1)"},
@@ -344,9 +403,77 @@ function scores(){
   return s;
 }
 
-function renderAll(){ rBriefing(); rAgentes(); rOpps(); rCartera(); rMarcador(); rRegistro();
+function renderAll(){ rKpis(); rAlerts(); rBriefing(); rAgentes(); rAprobaciones(); rOpps(); rCartera(); rMarcador(); rRegistro();
   const open=(DATA.opportunities||[]).filter(o=>o.status==="abierta").length;
-  $("#n-opps").textContent = open||""; }
+  $("#n-opps").textContent = open||"";
+  $("#n-appr").textContent = pending().length||""; }
+
+/* ═══════════ ESTADO DEL EQUIPO ═══════════ */
+const AGENT_STATE = {active:"Trabajando", idle:"A la espera", error:"Con incidencia", offline:"Desconectado"};
+const pending = () => (DATA.approvals||[]).filter(a=>a.status==="pendiente");
+const agentRow = k => (DATA.agents||[]).find(a=>a.key===k) || null;
+
+function sameDay(iso){
+  if(!iso) return false;
+  const d=new Date(iso), n=new Date();
+  return d.getDate()===n.getDate() && d.getMonth()===n.getMonth() && d.getFullYear()===n.getFullYear();
+}
+function tasksToday(k){ return (DATA.tasks||[]).filter(t=>t.agent===k && sameDay(t.started_at)).length; }
+
+/* "hace 2 h" — el last ping del vídeo */
+function relTime(iso){
+  if(!iso) return "sin actividad";
+  const mins = Math.round((Date.now()-new Date(iso).getTime())/60000);
+  if(mins < 1) return "ahora mismo";
+  if(mins < 60) return `hace ${mins} min`;
+  const h = Math.round(mins/60);
+  if(h < 48) return `hace ${h} h`;
+  return `hace ${Math.round(h/24)} d`;
+}
+
+/* En línea = ha dado señales dentro de la última ronda diaria (36 h de margen). */
+function isOnline(row){
+  return !!row?.last_ping_at && (Date.now()-new Date(row.last_ping_at).getTime()) < 36*3600*1000;
+}
+
+function portfolioValue(){
+  const snap=(DATA.snapshots||[])[0];
+  if(snap) return Number(snap.total_value);
+  return (DATA.positions||[]).reduce((s,p)=>s+Number(p.current_value||0),0);
+}
+
+function rKpis(){
+  const agents=DATA.agents||[];
+  const online=agents.filter(isOnline).length;
+  const nTasks=(DATA.tasks||[]).filter(t=>sameDay(t.started_at)).length;
+  const nAppr=pending().length;
+  const nOpen=(DATA.opportunities||[]).filter(o=>o.status==="abierta").length;
+  const lastRun=(DATA.runs||[])[0];
+  const tiles=[
+    {lbl:"Valor cartera", val:fmtEUR(portfolioValue())},
+    {lbl:"Agentes en línea", val:agents.length?`${online}/${agents.length}`:"—",
+      cls: agents.length && online===agents.length ? "ok" : online ? "warn" : ""},
+    {lbl:"Tareas hoy", val:nTasks||"0"},
+    {lbl:"Aprobaciones", val:nAppr||"0", cls:nAppr?"warn":""},
+    {lbl:"Oportunidades", val:nOpen||"0"},
+    {lbl:"Última ronda", val:lastRun?relTime(lastRun.finished_at||lastRun.started_at):"—"},
+  ];
+  const el=$("#kpis");
+  el.style.display="";
+  el.innerHTML=tiles.map(t=>`<div class="kpi"><div class="lbl">${t.lbl}</div>
+    <div class="val ${t.cls||""}">${t.val}</div></div>`).join("");
+}
+
+function rAlerts(){
+  const list=(DATA.alerts||[]).filter(a=>a.status==="activa");
+  const color={critica:"var(--critical)", aviso:"var(--warning)", info:"var(--s1)"};
+  const icon={critica:"⬤", aviso:"▲", info:"●"};
+  $("#alerts").innerHTML = list.map(a=>`<div class="alertbar" style="--ac:${color[a.level]||"var(--warning)"}">
+      <span class="ico">${icon[a.level]||"▲"}</span>
+      <span class="msg">${esc(a.message)}${a.action_hint?`<span class="hint">${esc(a.action_hint)}</span>`:""}</span>
+      <span class="lv">${esc(a.level)}</span>
+    </div>`).join("");
+}
 
 /* ═══════════ BRIEFING ═══════════ */
 function rBriefing(){
@@ -376,12 +503,18 @@ function rAgentes(){
     const rs = reports.filter(r=>r.agent===k);
     const last = rs[0];
     const s = sc[k];
+    const st = agentRow(k);
+    const status = st ? (isOnline(st) ? st.status : "offline") : "offline";
+    const nt = tasksToday(k);
     return `<div class="agent" style="--ac:${a.c}" onclick="agentModal('${k}')">
       <div class="head"><div class="chip">${a.icon}</div>
         <div><div class="nm">${a.nm}</div><div class="rl">${esc(a.rol)}</div></div>
         <div class="scorebadge" title="Marcador">${s.score>0?"+":""}${s.score} pts</div></div>
-      <div class="last">${last?esc(last.title)+" — "+esc(last.content_md.replace(/[#*>`-]/g," ").slice(0,160)):"Sin informes todavía. Se activará en la primera ronda diaria."}</div>
-      <div class="foot">${last?fmtDate(last.created_at)+" · "+rs.length+" informe(s)":"—"} · pulsa para ver todo</div>
+      <div class="state"><span class="sdot ${status}"></span><b>${AGENT_STATE[status]}</b>
+        <span class="tcount">${nt} tarea${nt===1?"":"s"} hoy</span></div>
+      <div class="last">${st?.current_task ? "▸ "+esc(st.current_task) :
+        (last?esc(last.title)+" — "+esc(last.content_md.replace(/[#*>`-]/g," ").slice(0,160)):"Sin informes todavía. Se activará en la primera ronda diaria.")}</div>
+      <div class="foot">${last?rs.length+" informe(s)":"—"} · último ping ${relTime(st?.last_ping_at)} · pulsa para ver todo</div>
     </div>`;
   }).join("") + `</div>`;
 }
@@ -394,6 +527,88 @@ function agentModal(k){
     ${rs.length?rs.map(r=>`<div class="card" style="margin-top:14px"><div class="meta">${fmtDate(r.created_at)}</div>
       <h3 style="margin:4px 0 8px">${esc(r.title)}</h3><div class="md">${md(r.content_md)}</div></div>`).join(""):
       `<div class="empty">Aún no hay informes de este agente.</div>`}`);
+}
+
+/* ═══════════ APROBACIONES ═══════════ */
+function rAprobaciones(){
+  const v=$("#v-aprobaciones");
+  const pend=pending();
+  const done=(DATA.approvals||[]).filter(a=>a.status!=="pendiente").slice(0,20);
+  const tasks=(DATA.tasks||[]).slice(0,30);
+
+  const card = a => {
+    const ag=AGENTS[a.agent]||{nm:a.agent,c:"var(--s8)",icon:"◇"};
+    return `<div class="appr" style="--ac:${ag.c}">
+      <div class="row1">
+        <span class="prio ${a.priority}">${a.priority}</span>
+        <span class="ttl">${esc(a.title)}</span>
+        <span class="tag" style="--ac:${ag.c};font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+          border-radius:6px;padding:3px 8px;background:color-mix(in srgb, ${ag.c} 16%, transparent);color:${ag.c}">${ag.icon} ${ag.nm}</span>
+      </div>
+      ${a.detail_md?`<div class="md det">${md(a.detail_md)}</div>`:""}
+      <div class="acts">
+        ${WKEY?`<button class="abtn ok" onclick="resolveAppr('${a.id}','aprobada',this)">✓ Aprobar</button>
+        <button class="abtn no" onclick="resolveAppr('${a.id}','rechazada',this)">✕ Rechazar</button>`:""}
+        <span class="meta" style="margin-left:auto">${fmtDate(a.created_at)}${a.expires_at?` · caduca ${fmtDate(a.expires_at)}`:""}</span>
+      </div>
+    </div>`;
+  };
+
+  v.innerHTML = `<div class="grid2">
+    <div>
+      <div class="card" style="margin-bottom:14px">
+        <p class="kicker">Esperando tu visto bueno</p>
+        <h2 class="title">${pend.length} pendiente${pend.length===1?"":"s"}</h2>
+        ${!WKEY?`<div class="readonly" style="margin-top:10px">Modo solo lectura: este dispositivo no tiene la clave de escritura.
+          Abre el panel una vez con <code>&amp;w=…</code> para poder aprobar desde aquí, o responde por WhatsApp al equipo.</div>`:""}
+      </div>
+      ${pend.length?pend.map(card).join(""):
+        `<div class="card"><div class="empty"><div class="big">✓</div>
+          Nada pendiente. Cuando un agente proponga algo que necesite tu aprobación, aparecerá aquí y te llegará al móvil.</div></div>`}
+      ${done.length?`<div class="card" style="margin-top:16px"><p class="kicker">Resueltas recientemente</p>
+        ${done.map(a=>{const ag=AGENTS[a.agent]||{nm:a.agent,icon:"◇",c:"var(--muted)"};
+          const col=a.status==="aprobada"?"var(--good)":a.status==="rechazada"?"var(--critical)":"var(--muted)";
+          return `<div class="runrow"><span class="dot" style="background:${col}"></span>
+            <span style="min-width:70px;font-weight:600;color:${ag.c}">${ag.nm}</span>
+            <span style="flex:1;color:var(--ink-2)">${esc(a.title)}${a.resolution_note?` — <em>${esc(a.resolution_note)}</em>`:""}</span>
+            <span class="meta">${a.status} · ${fmtDate(a.resolved_at||a.created_at)}</span></div>`;}).join("")}
+      </div>`:""}
+    </div>
+    <div class="card"><p class="kicker">Actividad del equipo</p>
+      ${tasks.length?tasks.map(t=>{
+        const ag=AGENTS[t.agent]||{nm:t.agent,icon:"◇",c:"var(--muted)"};
+        const col=t.status==="completed"?"var(--good)":t.status==="failed"?"var(--critical)":"var(--warning)";
+        return `<div class="runrow"><span class="dot" style="background:${col}"></span>
+          <span style="min-width:70px;font-weight:600;color:${ag.c}">${ag.nm}</span>
+          <span style="flex:1;color:var(--ink-2)">${esc(t.title)}</span>
+          <span class="meta">${relTime(t.finished_at||t.started_at)}</span></div>`;}).join(""):
+        `<div class="empty">Cada tarea que ejecute el equipo se registrará aquí en tiempo real.</div>`}
+    </div>
+  </div>`;
+}
+
+async function resolveAppr(id, status, btn){
+  if(!WKEY) return;
+  let note = "";
+  if(status==="rechazada"){
+    note = prompt("Motivo del rechazo (opcional):") ?? "";
+  }
+  const acts = btn.parentElement;
+  acts.querySelectorAll("button").forEach(b=>b.disabled=true);
+  btn.textContent = "Enviando…";
+  try{
+    const r = await fetch(`${OPS}/approval/resolve`, {
+      method:"POST",
+      headers:{"content-type":"application/json","x-ops-token":WKEY},
+      body: JSON.stringify({id, status, note})
+    });
+    if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error || ("HTTP "+r.status));
+    await load();
+  }catch(err){
+    btn.textContent = "Error";
+    acts.insertAdjacentHTML("beforeend",
+      `<span class="meta" style="color:var(--critical)">No se pudo guardar: ${esc(err.message)}</span>`);
+  }
 }
 
 /* ═══════════ OPORTUNIDADES ═══════════ */
@@ -584,7 +799,7 @@ function hookTips(el){
 window.addEventListener("resize",()=>{ if(DATA){rCartera();} });
 
 load();
-setInterval(load, 5*60*1000); // auto-refresh cada 5 min
+setInterval(load, 60*1000); // auto-refresh cada minuto: el estado de los agentes va vivo
 </script>
 </body>
 </html>
