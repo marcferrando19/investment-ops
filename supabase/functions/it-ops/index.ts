@@ -4,14 +4,12 @@
 // expone SQL ni la service role key: solo estas rutas, con el cuerpo validado.
 // Si el agente se descarrilla, el daño máximo es insertar una fila fea.
 //
-// Auth: cabecera  x-ops-token: <IT_OPS_TOKEN>
+// Auth: cabecera  x-ops-token: <token de escritura>
 // (token distinto del `k` de lectura del panel — ver openclaw/README.md)
 //
-// Desplegar:
-//   supabase secrets set IT_OPS_TOKEN=<token largo aleatorio>
-//   supabase functions deploy it-ops --no-verify-jwt
+// El token se busca, por orden: la variable de entorno IT_OPS_TOKEN, y si no,
+// la fila `ops_token` de it_settings, que solo la service role puede leer.
 
-const TOKEN = Deno.env.get("IT_OPS_TOKEN") ?? "";
 const SB = Deno.env.get("SUPABASE_URL") ?? "";
 const SRK = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const BASE = SB + "/rest/v1/";
@@ -33,11 +31,23 @@ function json(obj: unknown, status = 200): Response {
   });
 }
 
+/** Token de escritura, cacheado un minuto para no consultar en cada petición. */
+let cached: { value: string; at: number } | null = null;
+async function opsToken(): Promise<string> {
+  const fromEnv = Deno.env.get("IT_OPS_TOKEN");
+  if (fromEnv) return fromEnv;
+  if (cached && Date.now() - cached.at < 60_000) return cached.value;
+  const rows = await rest("it_settings?select=value&key=eq.ops_token&limit=1");
+  const value = rows?.[0]?.value?.token ?? "";
+  cached = { value, at: Date.now() };
+  return value;
+}
+
 /** Comparación en tiempo constante: no filtra el token carácter a carácter. */
-function tokenOk(given: string): boolean {
-  if (!TOKEN || given.length !== TOKEN.length) return false;
+function tokenOk(given: string, expected: string): boolean {
+  if (!expected || given.length !== expected.length) return false;
   let diff = 0;
-  for (let i = 0; i < TOKEN.length; i++) diff |= given.charCodeAt(i) ^ TOKEN.charCodeAt(i);
+  for (let i = 0; i < expected.length; i++) diff |= given.charCodeAt(i) ^ expected.charCodeAt(i);
   return diff === 0;
 }
 
@@ -107,6 +117,17 @@ function agentOf(body: Record<string, unknown>): string {
   return oneOf(str(body, "agent"), AGENTS, "agent")!;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function uuid(body: Record<string, unknown>, field: string, required = true): string | undefined {
+  const v = str(body, field, required);
+  if (v === undefined) return undefined;
+  if (!UUID_RE.test(v)) throw new BadRequest(`"${field}" no es un identificador válido`);
+  return v;
+}
+
+/** Filtro PostgREST con el valor escapado: un "&" en el valor no puede añadir parámetros. */
+const eq = (col: string, val: string) => `${col}=eq.${encodeURIComponent(val)}`;
+
 // ── rutas ────────────────────────────────────────────────────────────────────
 type Handler = (body: Record<string, unknown>, url: URL) => Promise<unknown>;
 
@@ -122,7 +143,7 @@ const POST_ROUTES: Record<string, Handler> = {
   },
 
   "/run/finish": async (b) => {
-    const run = await patch("it_runs", `id=eq.${str(b, "run_id")}`, {
+    const run = await patch("it_runs", eq("id", uuid(b, "run_id")!), {
       status: oneOf(str(b, "status", false), ["running", "completed", "failed"], "status") ?? "completed",
       summary: str(b, "summary", false) ?? null,
       finished_at: new Date().toISOString(),
@@ -133,7 +154,7 @@ const POST_ROUTES: Record<string, Handler> = {
   // Latido de agente ─────────────────────────────────────────────────────────
   "/ping": async (b) => {
     const agent = agentOf(b);
-    const row = await patch("it_agents", `key=eq.${agent}`, {
+    const row = await patch("it_agents", eq("key", agent), {
       status: oneOf(str(b, "status", false), ["idle", "active", "error", "offline"], "status") ?? "active",
       current_task: str(b, "current_task", false) ?? null,
       last_ping_at: new Date().toISOString(),
@@ -149,11 +170,11 @@ const POST_ROUTES: Record<string, Handler> = {
     const task = await insert("it_tasks", {
       agent,
       title,
-      run_id: str(b, "run_id", false) ?? null,
+      run_id: uuid(b, "run_id", false) ?? null,
       status: "running",
     });
     // Un task/start implica que el agente está trabajando: ahorra un /ping.
-    await patch("it_agents", `key=eq.${agent}`, {
+    await patch("it_agents", eq("key", agent), {
       status: "active",
       current_task: title,
       last_ping_at: new Date().toISOString(),
@@ -163,12 +184,12 @@ const POST_ROUTES: Record<string, Handler> = {
   },
 
   "/task/finish": async (b) => {
-    const task = await patch("it_tasks", `id=eq.${str(b, "task_id")}`, {
+    const task = await patch("it_tasks", eq("id", uuid(b, "task_id")!), {
       status: oneOf(str(b, "status", false), ["running", "completed", "failed"], "status") ?? "completed",
       detail: str(b, "detail", false) ?? null,
       finished_at: new Date().toISOString(),
     });
-    await patch("it_agents", `key=eq.${task.agent}`, {
+    await patch("it_agents", eq("key", task.agent), {
       status: task.status === "failed" ? "error" : "idle",
       current_task: null,
       last_ping_at: new Date().toISOString(),
@@ -183,7 +204,7 @@ const POST_ROUTES: Record<string, Handler> = {
       agent: agentOf(b),
       title: str(b, "title"),
       content_md: str(b, "content_md"),
-      run_id: str(b, "run_id", false) ?? null,
+      run_id: uuid(b, "run_id", false) ?? null,
     });
     return { report_id: row.id };
   },
@@ -195,7 +216,7 @@ const POST_ROUTES: Record<string, Handler> = {
       title: str(b, "title"),
       content_md: str(b, "content_md"),
       highlights,
-      run_id: str(b, "run_id", false) ?? null,
+      run_id: uuid(b, "run_id", false) ?? null,
     });
     return { briefing_id: row.id };
   },
@@ -216,7 +237,7 @@ const POST_ROUTES: Record<string, Handler> = {
       horizon: str(b, "horizon", false) ?? null,
       entry_ref_price: num(b, "entry_ref_price", false) ?? null,
       ref_currency: str(b, "ref_currency", false) ?? "USD",
-      run_id: str(b, "run_id", false) ?? null,
+      run_id: uuid(b, "run_id", false) ?? null,
       status: "abierta",
     });
     return { opportunity_id: row.id };
@@ -224,7 +245,7 @@ const POST_ROUTES: Record<string, Handler> = {
 
   "/opportunity/resolve": async (b) => {
     const status = oneOf(str(b, "status"), ["abierta", "acierto", "error", "caducada"], "status")!;
-    const row = await patch("it_opportunities", `id=eq.${str(b, "id")}`, {
+    const row = await patch("it_opportunities", eq("id", uuid(b, "id")!), {
       status,
       outcome_note: str(b, "outcome_note", false) ?? null,
       closed_at: status === "abierta" ? null : new Date().toISOString(),
@@ -237,7 +258,7 @@ const POST_ROUTES: Record<string, Handler> = {
       agent: agentOf(b),
       delta: Math.trunc(num(b, "delta", true)!),
       reason: str(b, "reason"),
-      run_id: str(b, "run_id", false) ?? null,
+      run_id: uuid(b, "run_id", false) ?? null,
     });
     return { score_event_id: row.id };
   },
@@ -251,7 +272,7 @@ const POST_ROUTES: Record<string, Handler> = {
       total_value: num(b, "total_value", true),
       by_class,
       currency: str(b, "currency", false) ?? "EUR",
-      run_id: str(b, "run_id", false) ?? null,
+      run_id: uuid(b, "run_id", false) ?? null,
     });
     return { snapshot_id: row.id };
   },
@@ -266,7 +287,7 @@ const POST_ROUTES: Record<string, Handler> = {
       detail_md: str(b, "detail_md", false) ?? null,
       payload: b.payload ?? {},
       expires_at: str(b, "expires_at", false) ?? null,
-      run_id: str(b, "run_id", false) ?? null,
+      run_id: uuid(b, "run_id", false) ?? null,
       status: "pendiente",
     });
     return { approval_id: row.id };
@@ -274,7 +295,7 @@ const POST_ROUTES: Record<string, Handler> = {
 
   "/approval/resolve": async (b) => {
     const status = oneOf(str(b, "status"), ["aprobada", "rechazada", "caducada"], "status")!;
-    const row = await patch("it_approvals", `id=eq.${str(b, "id")}&status=eq.pendiente`, {
+    const row = await patch("it_approvals", eq("id", uuid(b, "id")!) + "&status=eq.pendiente", {
       status,
       resolution_note: str(b, "note", false) ?? null,
       resolved_at: new Date().toISOString(),
@@ -301,7 +322,7 @@ const POST_ROUTES: Record<string, Handler> = {
   },
 
   "/alert/resolve": async (b) => {
-    const row = await patch("it_alerts", `key=eq.${str(b, "key")}`, {
+    const row = await patch("it_alerts", eq("key", str(b, "key")!), {
       status: "resuelta",
       updated_at: new Date().toISOString(),
       resolved_at: new Date().toISOString(),
@@ -315,7 +336,7 @@ const GET_ROUTES: Record<string, Handler> = {
   "/approvals": async (_b, url) => {
     const status = oneOf(url.searchParams.get("status") ?? "pendiente",
       ["pendiente", "aprobada", "rechazada", "caducada"], "status");
-    return await rest(`it_approvals?select=*&status=eq.${status}&order=created_at.desc&limit=50`);
+    return await rest(`it_approvals?select=*&status=eq.${encodeURIComponent(status!)}&order=created_at.desc&limit=50`);
   },
 
   "/agents": async () => await rest("it_agents?select=*&order=key"),
@@ -328,12 +349,18 @@ const GET_ROUTES: Record<string, Handler> = {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return json({ ok: true });
 
-  if (!TOKEN) {
-    return json({ error: "IT_OPS_TOKEN no está configurado en la función" }, 500);
+  let expected: string;
+  try {
+    expected = await opsToken();
+  } catch (e) {
+    return json({ error: `No se pudo leer el token de escritura: ${e}` }, 500);
+  }
+  if (!expected) {
+    return json({ error: "No hay token de escritura configurado (it_settings.ops_token)" }, 500);
   }
   const given = req.headers.get("x-ops-token") ??
     (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!tokenOk(given)) return json({ error: "No autorizado" }, 401);
+  if (!tokenOk(given, expected)) return json({ error: "No autorizado" }, 401);
 
   const url = new URL(req.url);
   // La ruta llega como /it-ops/<algo>; nos quedamos con lo que va detrás.

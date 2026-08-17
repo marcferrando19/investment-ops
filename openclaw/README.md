@@ -12,45 +12,54 @@ el panel las pinta, y tú apruebas desde el navegador o desde WhatsApp.
    └───────────────────────┘         └──────────────────────┘      └──────────────┘
 ```
 
-Nada de esto está desplegado todavía: este directorio y `supabase/` son el código listo
-para aplicar cuando quieras.
+## 1. La parte de Supabase · YA DESPLEGADA
 
-## 1. Desplegar la parte de Supabase
+Aplicado el 17/08/2026 en el proyecto `yukrbehehvjzacazckpl`:
+
+- migración `command_center` → `it_agents` (con los 7 sembrados), `it_tasks`,
+  `it_approvals`, `it_alerts`;
+- `it-ops` v1 desplegada (nueva);
+- `it-panel` v10 desplegada (sirve las tablas nuevas y añade `/publish`).
+
+**De dónde salen los tokens.** No hay acceso a `supabase secrets` desde el entorno donde
+se desplegó, así que ambos se leen de `it_settings`, que solo la service role puede tocar
+— cerrado igual que un secreto. Si algún día prefieres variables de entorno, fíjalas y
+mandan sobre la tabla, sin cambiar código:
+
+```bash
+supabase secrets set IT_PANEL_TOKEN=<token de lectura>
+supabase secrets set IT_OPS_TOKEN=<token de escritura>
+```
+
+Por qué dos tokens distintos: el de lectura viaja en la URL del panel y acaba en el
+historial del navegador y en cualquier sitio donde pegues el enlace. El de escritura solo
+vive en la configuración de OpenClaw. Si el primero se filtra, alguien ve tu cartera; si
+fueran el mismo, además podría escribir en ella.
+
+Para volver a desplegar desde este repo:
 
 ```bash
 supabase link --project-ref yukrbehehvjzacazckpl
-
-# Token de LECTURA: el mismo que ya usan tus enlaces ?k=… (si lo cambias, dejan de abrir)
-supabase secrets set IT_PANEL_TOKEN=<el token que ya usas hoy>
-
-# Token de ESCRITURA: nuevo, largo y distinto del anterior
-supabase secrets set IT_OPS_TOKEN=$(openssl rand -hex 32)
-
-supabase db push                                     # crea it_agents, it_tasks, it_approvals, it_alerts
-supabase functions deploy it-panel --no-verify-jwt   # ahora también sirve las tablas nuevas
-supabase functions deploy it-ops   --no-verify-jwt   # API de escritura
+supabase db push
+supabase functions deploy it-panel --no-verify-jwt
+supabase functions deploy it-ops   --no-verify-jwt
 ```
 
-Comprueba que responde:
+## 2. Publicar el panel
 
-```bash
-curl -sS "$IT_OPS_URL/health" -H "x-ops-token: $IT_OPS_TOKEN"
-# {"ok":true,"now":"…"}
+El panel se sirve desde Storage. La ruta `/publish` lo descarga del repo y lo deja
+publicado, así que **git es la fuente de la verdad**: haces push y abres esta URL en el
+navegador (es un GET, no hace falta terminal):
+
+```
+https://yukrbehehvjzacazckpl.supabase.co/functions/v1/it-panel/publish?k=<token_lectura>&ref=<rama>
 ```
 
-Por qué dos tokens: el de lectura viaja en la URL del panel y acaba en el historial del
-navegador y en cualquier sitio donde pegues el enlace. El de escritura solo vive en la
-configuración de OpenClaw. Si el primero se filtra, alguien ve tu cartera; si fueran el
-mismo, además podría escribir en ella.
+`ref` es opcional y por defecto vale `main`. Mientras el Command Center viva en su rama,
+usa `&ref=claude/openclaw-connection-m0flvs`.
 
-## 2. Publicar el panel actualizado
-
-El panel se sirve desde Storage a través de `it-panel`. La función `/setup` lo lee de la
-tabla `it_settings` (clave `panel_html`), así que sube ahí el `index.html` nuevo y llama:
-
-```bash
-curl -sS "$IT_PANEL_URL/setup?k=$IT_PANEL_TOKEN"
-```
+Responde con el número de bytes publicados; si algo va mal, dice qué. La ruta `/setup`
+antigua sigue existiendo y publica lo que haya guardado en `it_settings.panel_html`.
 
 Para poder **aprobar desde el navegador**, abre el panel una vez con las dos claves:
 
@@ -119,6 +128,14 @@ openclaw mcp doctor --probe
 
 Mantén el `--read-only`. Un access token personal sin esa bandera le da a un agente que
 responde a mensajes de WhatsApp permisos para alterar el esquema de tu base de datos.
+
+## Aviso: este repositorio es público
+
+`marcferrando19/investment-ops` es público. No hay ningún token en el código —los dos
+viven en `it_settings`— pero cualquiera puede leer el panel, el esquema y la skill. No
+pegues aquí claves, ni el enlace `?k=…`, ni datos de la cartera. Si prefieres que no se
+vea nada, ponlo en privado; lo único que dejaría de funcionar es `/publish`, que necesita
+que `raw.githubusercontent.com` sirva el `index.html` sin autenticación.
 
 ## Comprobación de extremo a extremo
 

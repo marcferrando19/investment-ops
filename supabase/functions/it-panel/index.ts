@@ -1,20 +1,18 @@
 // it-panel · API de lectura del panel (y servidor del propio HTML).
 //
-// Versión desplegada actualmente + las cuatro tablas del Command Center
+// Versión desplegada anteriormente + las cuatro tablas del Command Center
 // (it_agents, it_tasks, it_approvals, it_alerts).
 //
-// El token de lectura ya no va incrustado en el código: se lee de IT_PANEL_TOKEN.
-// Antes de desplegar hay que fijarlo con el MISMO valor que usan tus enlaces
-// `?k=…` actuales, o dejarán de funcionar:
-//
-//   supabase secrets set IT_PANEL_TOKEN=<el token que ya usas>
-//   supabase functions deploy it-panel --no-verify-jwt
+// El token de lectura ya no va incrustado en el código. Se busca, por orden:
+//   1. la variable de entorno IT_PANEL_TOKEN (si algún día la fijas con
+//      `supabase secrets set`, manda sobre todo lo demás);
+//   2. la fila `panel_token` de it_settings, que solo la service role puede leer.
+// El valor sembrado es el mismo de siempre, así que los enlaces ?k=… no cambian.
 
-const TOKEN = Deno.env.get("IT_PANEL_TOKEN") ?? "";
 const SB = Deno.env.get("SUPABASE_URL") ?? "";
 const BASE = SB + "/rest/v1/";
 const SRK = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const STORAGE_PUBLIC = `${SB}/storage/v1/object/public/panel/${TOKEN}/index.html`;
+const AUTH = { apikey: SRK, Authorization: `Bearer ${SRK}` };
 
 function withHeaders(body: BodyInit | null, contentType: string, status = 200, extra?: Record<string, string>): Response {
   const h = new Headers();
@@ -30,20 +28,35 @@ function json(obj: unknown, status = 200): Response {
   return withHeaders(JSON.stringify(obj), "application/json; charset=utf-8", status);
 }
 
-const AUTH = { apikey: SRK, Authorization: `Bearer ${SRK}` };
-
 async function q(path: string) {
   const r = await fetch(BASE + path, { headers: AUTH });
   if (!r.ok) throw new Error(`${path}: ${r.status} ${await r.text()}`);
   return r.json();
 }
 
-const SVG_SHELL = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 800 600">\n<title>Investment Ops</title>\n<rect width="100%" height="100%" fill="#0d0d0d"/>\n<text id="m" x="400" y="300" text-anchor="middle" fill="#898781" font-family="system-ui, sans-serif" font-size="14" letter-spacing="3">CARGANDO INVESTMENT OPS…</text>\n<script>//<![CDATA[\nfetch("${STORAGE_PUBLIC}",{cache:"no-store"}).then(function(r){\n  if(!r.ok){throw new Error("HTTP "+r.status);}\n  return r.text();\n}).then(function(t){\n  var b=new Blob([t],{type:"text/html"});\n  location.replace(URL.createObjectURL(b));\n}).catch(function(e){\n  var m=document.getElementById("m");\n  if(m){m.textContent="ERROR CARGANDO EL PANEL: "+e.message;}\n});\n//]]></script>\n</svg>`;
+/** Token de lectura, cacheado un minuto para no consultar en cada petición. */
+let cached: { value: string; at: number } | null = null;
+async function panelToken(): Promise<string> {
+  const fromEnv = Deno.env.get("IT_PANEL_TOKEN");
+  if (fromEnv) return fromEnv;
+  if (cached && Date.now() - cached.at < 60_000) return cached.value;
+  const rows = await q("it_settings?select=value&key=eq.panel_token&limit=1");
+  const value = rows?.[0]?.value?.token ?? "";
+  cached = { value, at: Date.now() };
+  return value;
+}
+
+const storageUrl = (token: string) => `${SB}/storage/v1/object/public/panel/${token}/index.html`;
+
+const svgShell = (token: string) =>
+  `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 800 600">\n<title>Investment Ops</title>\n<rect width="100%" height="100%" fill="#0d0d0d"/>\n<text id="m" x="400" y="300" text-anchor="middle" fill="#898781" font-family="system-ui, sans-serif" font-size="14" letter-spacing="3">CARGANDO INVESTMENT OPS…</text>\n<script>//<![CDATA[\nfetch("${storageUrl(token)}",{cache:"no-store"}).then(function(r){\n  if(!r.ok){throw new Error("HTTP "+r.status);}\n  return r.text();\n}).then(function(t){\n  var b=new Blob([t],{type:"text/html"});\n  location.replace(URL.createObjectURL(b));\n}).catch(function(e){\n  var m=document.getElementById("m");\n  if(m){m.textContent="ERROR CARGANDO EL PANEL: "+e.message;}\n});\n//]]></script>\n</svg>`;
 
 Deno.serve(async (req: Request) => {
   try {
     if (req.method === "OPTIONS") return withHeaders("ok", "text/plain");
-    if (!TOKEN) return json({ error: "IT_PANEL_TOKEN no está configurado en la función" }, 500);
+
+    const TOKEN = await panelToken();
+    if (!TOKEN) return json({ error: "No hay token de panel configurado (it_settings.panel_token)" }, 500);
 
     const url = new URL(req.url);
     if (url.searchParams.get("k") !== TOKEN) {
@@ -75,6 +88,45 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // /publish · trae el panel del repo (público) y lo deja publicado.
+    // Así el HTML de git es la fuente de la verdad: git push + abrir esta URL.
+    if (path.endsWith("/publish")) {
+      const ref = (url.searchParams.get("ref") ?? "main").trim();
+      if (!/^[A-Za-z0-9._\/-]{1,100}$/.test(ref)) {
+        return json({ error: "El parámetro ref tiene caracteres no permitidos" }, 400);
+      }
+      const src = `https://raw.githubusercontent.com/marcferrando19/investment-ops/${ref}/index.html`;
+      const gres = await fetch(src, { headers: { "cache-control": "no-cache" } });
+      if (!gres.ok) return json({ error: `No se pudo leer ${src}: HTTP ${gres.status}` }, 502);
+      const html = await gres.text();
+      if (!html.includes("</html>")) {
+        return json({ error: "Lo descargado no parece el panel (falta </html>)" }, 502);
+      }
+
+      await fetch(`${BASE}it_settings?on_conflict=key`, {
+        method: "POST",
+        headers: { ...AUTH, "content-type": "application/json", Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify({ key: "panel_html", value: { html }, updated_at: new Date().toISOString() }),
+      });
+
+      await fetch(`${SB}/storage/v1/bucket`, {
+        method: "POST",
+        headers: { ...AUTH, "content-type": "application/json" },
+        body: JSON.stringify({ id: "panel", name: "panel", public: true }),
+      });
+      const ures = await fetch(`${SB}/storage/v1/object/panel/${TOKEN}/index.html`, {
+        method: "POST",
+        headers: { ...AUTH, "content-type": "text/html; charset=utf-8", "x-upsert": "true" },
+        body: html,
+      });
+      return json({
+        publicado: ures.ok,
+        desde: src,
+        bytes: html.length,
+        upload: { status: ures.status, msg: await ures.text() },
+      }, ures.ok ? 200 : 500);
+    }
+
     if (path.endsWith("/setup")) {
       const bres = await fetch(`${SB}/storage/v1/bucket`, {
         method: "POST",
@@ -91,10 +143,15 @@ Deno.serve(async (req: Request) => {
         body: html,
       });
       const umsg = await ures.text();
-      return json({ bucket: { status: bres.status, msg: bmsg }, upload: { status: ures.status, msg: umsg }, public_url: STORAGE_PUBLIC });
+      return json({
+        bucket: { status: bres.status, msg: bmsg },
+        upload: { status: ures.status, msg: umsg },
+        public_url: storageUrl(TOKEN),
+        bytes: html.length,
+      });
     }
 
-    return withHeaders(SVG_SHELL, "image/svg+xml; charset=utf-8");
+    return withHeaders(svgShell(TOKEN), "image/svg+xml; charset=utf-8");
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
