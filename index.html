@@ -195,6 +195,13 @@
   .opp .prog-meta{margin-top:5px;font-size:11.5px;color:var(--muted)}
   .opp .prog-meta b{color:var(--ink-2);font-variant-numeric:tabular-nums}
   .opp .foot{margin-top:10px;font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
+  .calib{margin-top:6px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+  .calib .clbl{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+  .calib .sep{color:var(--hairline);font-style:normal}
+  .calib b{font-weight:700}
+  .calib .cverd{margin-left:6px;font-weight:600}
+  .calib .cverd.good{color:var(--good)}
+  .calib .cverd.bad{color:var(--critical)}
 
   /* tables */
   table{width:100%;border-collapse:collapse;font-size:13px}
@@ -447,6 +454,29 @@ function scores(){
   (DATA.score_events||[]).forEach(e=>{ if(!s[e.agent])return; s[e.agent].score+=e.delta; e.delta>=0?s[e.agent].pos++:s[e.agent].neg++; s[e.agent].events.push(e); });
   return s;
 }
+
+// Calibración: ¿acierta cuando apuesta fuerte? Mide el % de acierto de las predicciones
+// RESUELTAS (acierto/error; las caducadas no cuentan) desglosado por nivel de convicción.
+// Un agente bien calibrado acierta más sus 4-5 que sus 1-2.
+function calibration(){
+  const out={};
+  (DATA.opportunities||[]).forEach(o=>{
+    if(o.status!=="acierto" && o.status!=="error") return;
+    const ag=o.agent, c=o.conviction||0, hit=o.status==="acierto";
+    if(!out[ag]) out[ag]={n:0, byConv:{}};
+    out[ag].n++;
+    (out[ag].byConv[c] = out[ag].byConv[c]||{a:0,e:0})[hit?"a":"e"]++;
+  });
+  // veredicto: acierto en apuestas fuertes (4-5) vs flojas (1-2)
+  Object.values(out).forEach(o=>{
+    const bucket=(lo,hi)=>{let a=0,t=0;for(let c=lo;c<=hi;c++){const b=o.byConv[c];if(b){a+=b.a;t+=b.a+b.e;}}return t?{rate:a/t,t}:null;};
+    o.fuerte=bucket(4,5); o.floja=bucket(1,2);
+    o.veredicto = (o.fuerte&&o.floja&&o.fuerte.t>=2&&o.floja.t>=2)
+      ? (o.fuerte.rate>=o.floja.rate ? "aprovecha" : "descalibrado") : null;
+  });
+  return out;
+}
+const rateCol = r => r>=0.6?"var(--good)":r>=0.4?"var(--warning)":"var(--critical)";
 
 function renderAll(){ rKpis(); rAlerts(); rBriefing(); rAgentes(); rAprobaciones(); rOpps(); rCartera(); rMarcador(); rRegistro();
   const open=(DATA.opportunities||[]).filter(o=>o.status==="abierta").length;
@@ -799,11 +829,23 @@ function rMarcador(){
   const rows=Object.entries(sc).sort((a,b)=>b[1].score-a[1].score);
   const maxAbs=Math.max(1,...rows.map(([,s])=>Math.abs(s.score)));
   const events=(DATA.score_events||[]);
+  const calib=calibration();
+  const anyCal=Object.values(calib).some(c=>c.n);
   v.innerHTML=`<div class="grid2">
     <div class="card"><p class="kicker">Ranking del equipo</p>
       ${rows.map(([k,s])=>{
         const a=AGENTS[k]; const w=Math.abs(s.score)/maxAbs*100;
         const col=s.score>=0?cssVal("var(--s1)"):cssVal("var(--s8)");
+        const cal=calib[k]; let calStrip="";
+        if(cal&&cal.n){
+          const parts=[5,4,3,2,1].filter(c=>cal.byConv[c]).map(c=>{
+            const b=cal.byConv[c], t=b.a+b.e;
+            return `<span title="Convicción ${c}: ${b.a} de ${t} acertadas">c${c} <b style="color:${rateCol(b.a/t)}">${b.a}/${t}</b></span>`;
+          }).join('<i class="sep">·</i>');
+          const verd=cal.veredicto==="aprovecha"?`<span class="cverd good">✓ aprovecha su convicción</span>`
+            :cal.veredicto==="descalibrado"?`<span class="cverd bad">⚠ falla sus apuestas fuertes</span>`:"";
+          calStrip=`<div class="calib"><span class="clbl">Calibración</span>${parts}${verd}</div>`;
+        }
         return `<div style="margin:14px 0">
           <div style="display:flex;font-size:13px;align-items:center;gap:8px">
             <span style="color:${a.c}">${a.icon}</span><strong>${a.nm}</strong>
@@ -811,8 +853,9 @@ function rMarcador(){
             <span style="margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums">${s.score>0?"+":""}${s.score}</span></div>
           <div style="height:8px;background:var(--surface-2);border-radius:4px;margin-top:6px;overflow:hidden;display:flex;${s.score<0?"justify-content:flex-end":""}">
             <div style="width:${Math.max(w,2)}%;background:${col};border-radius:4px"></div></div>
+          ${calStrip}
         </div>`;}).join("")}
-      <div class="meta" style="margin-top:10px">El jefe (Nexus) otorga o resta puntos según el resultado real de cada llamada de los agentes.</div>
+      <div class="meta" style="margin-top:10px">El jefe (Nexus) otorga o resta puntos según el resultado real de cada llamada de los agentes.${anyCal?` <b>Calibración</b>: acierto por nivel de convicción (c5 = apuesta fuerte). Lo ideal es acertar más las fuertes que las flojas.`:` <b>Calibración</b>: aparecerá bajo cada agente según se resuelvan predicciones — medirá si aciertan cuando apuestan fuerte.`}</div>
     </div>
     <div class="card"><p class="kicker">Últimos movimientos del marcador</p>
       ${events.length?events.slice(0,25).map(e=>{
