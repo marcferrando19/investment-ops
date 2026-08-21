@@ -237,10 +237,38 @@ const POST_ROUTES: Record<string, Handler> = {
       horizon: str(b, "horizon", false) ?? null,
       entry_ref_price: num(b, "entry_ref_price", false) ?? null,
       ref_currency: str(b, "ref_currency", false) ?? "USD",
+      target_price: num(b, "target_price", false) ?? null,
+      target_pct: num(b, "target_pct", false) ?? null,
+      deadline: str(b, "deadline", false) ?? null,
       run_id: uuid(b, "run_id", false) ?? null,
       status: "abierta",
     });
     return { opportunity_id: row.id };
+  },
+
+  // Registra el precio actual de una oportunidad abierta (y, si hace falta, completa
+  // objetivo/plazo de las heredadas). Así el panel pinta "precio actual" y el avance
+  // hacia el objetivo sin esperar a que se resuelva. Por símbolo, actualiza todas las
+  // abiertas de ese símbolo (el precio de mercado es el mismo para todas).
+  "/opportunity/track": async (b) => {
+    const id = str(b, "id", false);
+    const symbol = str(b, "symbol", false);
+    if (!id && !symbol) throw new BadRequest('Indica "id" o "symbol" de la oportunidad');
+    const fila: Record<string, unknown> = {};
+    const lp = num(b, "last_price", false);
+    if (lp !== undefined) { fila.last_price = lp; fila.last_price_at = new Date().toISOString(); }
+    const tp = num(b, "target_price", false);
+    if (tp !== undefined) fila.target_price = tp;
+    const tpct = num(b, "target_pct", false);
+    if (tpct !== undefined) fila.target_pct = tpct;
+    const dl = str(b, "deadline", false);
+    if (dl !== undefined) fila.deadline = dl;
+    if (Object.keys(fila).length === 0) {
+      throw new BadRequest('Nada que actualizar: indica "last_price", "target_price", "target_pct" o "deadline"');
+    }
+    const filtro = id ? eq("id", uuid(b, "id")!) : eq("symbol", symbol!) + "&status=eq.abierta";
+    const row = await patch("it_opportunities", filtro, fila);
+    return { opportunity_id: row.id, last_price: row.last_price, target_price: row.target_price, deadline: row.deadline };
   },
 
   "/opportunity/resolve": async (b) => {

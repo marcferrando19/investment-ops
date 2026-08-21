@@ -185,6 +185,15 @@
   .opp .predl .pl-o b{color:var(--s1)}
   .opp .predl .pl-o b.na{color:var(--muted);font-weight:500}
   .opp .predl .pl-arrow{color:var(--muted);font-size:17px;line-height:1}
+  .opp .predl .pl-now{margin-left:auto}
+  .opp .predl .pl-now b{color:var(--ink)}
+  .opp .prog{margin-top:8px}
+  .opp .prog-bar{height:7px;background:var(--surface-2);border-radius:5px;overflow:hidden}
+  .opp .prog-bar span{display:block;height:100%;border-radius:5px;background:var(--s1)}
+  .opp .prog.done .prog-bar span{background:var(--good)}
+  .opp .prog.bad .prog-bar span{background:var(--critical)}
+  .opp .prog-meta{margin-top:5px;font-size:11.5px;color:var(--muted)}
+  .opp .prog-meta b{color:var(--ink-2);font-variant-numeric:tabular-nums}
   .opp .foot{margin-top:10px;font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
 
   /* tables */
@@ -327,6 +336,8 @@ const fmtN = (n,d=2) => n==null?"—":Number(n).toLocaleString("es-ES",{minimumF
 const fmtEUR = n => n==null?"—":Number(n).toLocaleString("es-ES",{style:"currency",currency:"EUR",maximumFractionDigits:0});
 const fmtDate = s => s?new Date(s).toLocaleString("es-ES",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—";
 const fmtDay = s => s?new Date(s).toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long"}):"—";
+// Convierte un número en formato español ("4.800", "137,98") a Number.
+const numEs = s => { if(s==null) return null; const n=Number(String(s).replace(/\./g,"").replace(",",".")); return Number.isFinite(n)?n:null; };
 // Extrae el objetivo de la tesis. Formato fijo nuevo: "Objetivo: 326 USD (+24%)"
 // (con dos puntos → fuente fiable). Para las heredadas en prosa es conservador:
 // exige moneda en el precio (años y márgenes no la llevan) y descarta usos de la
@@ -660,8 +671,20 @@ function rOpps(){
       const a=AGENTS[o.agent]||{nm:o.agent,c:"var(--s8)",icon:"◇"};
       const conv=o.conviction||0;
       const obj=parseObjetivo(o.thesis);
-      const entrada=o.entry_ref_price!=null?`${fmtN(o.entry_ref_price)} ${esc(o.ref_currency||"")}`.trim():"—";
-      const objetivo=obj?(obj.price?esc(obj.price)+(obj.cur?" "+obj.cur:"")+(obj.pct?" ("+esc(obj.pct)+")":""):esc(obj.pct)):"";
+      const cur=esc(o.ref_currency||(obj?obj.cur:"")||"");
+      const entryN=o.entry_ref_price!=null?Number(o.entry_ref_price):null;
+      const entrada=entryN!=null?`${fmtN(entryN)} ${cur}`.trim():"—";
+      // Objetivo: preferimos el dato estructurado; si no, lo leído de la tesis.
+      const targetN=o.target_price!=null?Number(o.target_price):numEs(obj&&obj.price);
+      const tpct=o.target_pct!=null?(o.target_pct>0?"+":"")+fmtN(o.target_pct,1)+"%":(obj?obj.pct:"");
+      const objetivo=targetN!=null?`${fmtN(targetN)} ${cur}`.trim()+(tpct?` (${esc(tpct)})`:""):(obj&&obj.pct?esc(obj.pct):"");
+      // Realidad: precio actual y avance hacia el objetivo.
+      const lastN=o.last_price!=null?Number(o.last_price):null;
+      let prog=null;
+      if(entryN!=null&&targetN!=null&&lastN!=null&&targetN!==entryN) prog=(lastN-entryN)/(targetN-entryN)*100;
+      const progC=prog==null?null:Math.max(0,Math.min(100,prog));
+      const dias=o.deadline?Math.ceil((new Date(o.deadline)-Date.now())/864e5):null;
+      const diasTxt=dias==null?"":(dias<0?"plazo vencido":dias===0?"vence hoy":`quedan ${dias} días`);
       return `<div class="opp" style="--ac:${a.c}">
         <div class="row1"><span class="sym">${esc(o.name)}${o.symbol?` <span style="color:var(--muted);font-weight:400">· ${esc(o.symbol)}</span>`:""}</span>
           <span class="tag">${a.icon} ${a.nm}</span>
@@ -674,7 +697,12 @@ function rOpps(){
           <span class="pl-e"><i>Ref. entrada</i><b>${entrada}</b></span>
           <span class="pl-arrow">→</span>
           <span class="pl-o"><i>Objetivo</i>${objetivo?`<b>${objetivo}</b>`:`<b class="na">— sin objetivo</b>`}</span>
+          ${lastN!=null?`<span class="pl-now"><i>Ahora</i><b${o.last_price_at?` title="${fmtDate(o.last_price_at)}"`:""}>${fmtN(lastN)} ${cur}</b></span>`:""}
         </div>
+        ${progC!=null?`<div class="prog ${prog>=100?"done":prog<0?"bad":""}">
+          <div class="prog-bar"><span style="width:${progC.toFixed(0)}%"></span></div>
+          <div class="prog-meta">${prog>=100?"✓ objetivo alcanzado":prog<0?"va en contra":`<b>${prog.toFixed(0)}%</b> del camino al objetivo`}${diasTxt?` · ${diasTxt}`:""}</div>
+        </div>`:(diasTxt?`<div class="prog"><div class="prog-meta">${diasTxt}</div></div>`:"")}
         <div class="foot"><span>${fmtDate(o.opened_at)}</span>${o.horizon?`<span>Horizonte: ${esc(o.horizon)}</span>`:""}
           <span>${CLASSES[o.asset_class]||o.asset_class}</span></div>
       </div>`;

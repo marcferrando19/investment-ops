@@ -76,11 +76,13 @@ Corrige y reintenta; no sigas como si nada.
   `horizon` (fecha o ventana en la que debe cumplirse) y `entry_ref_price` **al precio
   actual de mercado**. Sin objetivo y `horizon` medibles no es una oportunidad: concrétala
   o no la abras.
-- **Cierra la `thesis` con el objetivo en formato fijo**, en su propia línea al final:
-  `Objetivo: <precio> <moneda> (<±%>)` — p.ej. `Objetivo: 210 USD (+11%)`. Si el objetivo
-  es un movimiento en % sin precio concreto, `Objetivo: +10%`. Ese formato con dos puntos
-  es lo que el panel lee para mostrar "Ref. entrada → Objetivo" limpio; sin él, la
-  oportunidad sale con "— sin objetivo".
+- **Manda el objetivo también como dato estructurado**, no solo en la tesis: en el mismo
+  `POST /opportunity` añade `target_price` (el precio objetivo), `target_pct` (el % esperado,
+  p.ej. `11`) y `deadline` (fecha límite del plazo en `YYYY-MM-DD`, la del `horizon`). Con
+  eso el panel pinta el objetivo, el avance y los días restantes con precisión. Igualmente
+  **cierra la `thesis` con el objetivo en formato fijo** en su propia línea al final —
+  `Objetivo: <precio> <moneda> (<±%>)`, p.ej. `Objetivo: 210 USD (+11%)`; si es un % sin
+  precio, `Objetivo: +10%` — como respaldo legible. Sin objetivo, sale "— sin objetivo".
 - **Raciona la convicción.** Como mucho **una** oportunidad de `conviction: 5` por
   especialista y ronda: la convicción 5 es tu apuesta del día, no la etiqueta por defecto.
   Si todo te parece un 5, nada lo es — y como el 5 puntúa doble al acertar y al fallar,
@@ -120,6 +122,11 @@ Corrige y reintenta; no sigas como si nada.
     objetivo que ya aparezca escrito en su `thesis`; si no lo hay, júzgalas por la dirección
     de la tesis frente a `entry_ref_price` y por la invalidación de `risks`. Así entran en
     el marcador por resultados sin necesidad de reescribirlas.
+  - **Registra el precio actual de cada abierta** con `POST /opportunity/track`
+    (`{"symbol":"AMZN","last_price":…}`) usando el precio de mercado que ya has consultado
+    para revisarla. Así el panel muestra "precio actual" y el avance hacia el objetivo en
+    vivo, sin esperar a que se resuelva. En las heredadas que aún no tengan objetivo/plazo
+    estructurado, aprovecha para completarlo aquí (`target_price`, `deadline`) si lo conoces.
 - **Puntúa solo al resolver, nunca por informar.** Proponer una idea o entregar un informe
   vale **0 puntos**: los puntos solo salen cuando una predicción se resuelve, y escalan con
   la convicción con que se apostó. `POST /score` con el motivo en `reason` citando la
