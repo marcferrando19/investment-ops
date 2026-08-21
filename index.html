@@ -202,6 +202,11 @@
   .calib .cverd{margin-left:6px;font-weight:600}
   .calib .cverd.good{color:var(--good)}
   .calib .cverd.bad{color:var(--critical)}
+  .trtab{width:100%;border-collapse:collapse;font-size:12.5px}
+  .trtab th{text-align:left;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--hairline)}
+  .trtab td{padding:8px;border-bottom:1px solid var(--hairline);font-variant-numeric:tabular-nums;color:var(--ink-2)}
+  .trtab tbody tr:last-child td,.trtab tr:last-child td{border-bottom:none}
+  .trtab th:not(:first-child),.trtab td:not(:first-child){text-align:center}
 
   /* tables */
   table{width:100%;border-collapse:collapse;font-size:13px}
@@ -477,6 +482,44 @@ function calibration(){
   return out;
 }
 const rateCol = r => r>=0.6?"var(--good)":r>=0.4?"var(--warning)":"var(--critical)";
+
+// Track record: el historial de rendimiento del equipo a partir de las predicciones
+// resueltas y el marcador. Solo cuenta a los cinco especialistas (Ledger y Nexus no
+// hacen predicciones).
+function trackRecord(){
+  const opps=DATA.opportunities||[];
+  const resolved=opps.filter(o=>o.status==="acierto"||o.status==="error");
+  const aciertos=resolved.filter(o=>o.status==="acierto").length;
+  const hitRate=resolved.length?aciertos/resolved.length:null;
+  const sc=scores(), cal=calibration();
+  const per=Object.keys(AGENTS).filter(k=>k!=="jefe"&&k!=="datos").map(k=>{
+    const c=cal[k]||{n:0,byConv:{}}; let a=0; Object.values(c.byConv).forEach(b=>a+=b.a);
+    return {k, res:c.n||0, aciertos:a, hit:c.n?a/c.n:null, net:sc[k]?sc[k].score:0, verd:c.veredicto};
+  });
+  const best=per.filter(p=>p.res>0).sort((a,b)=>b.net-a.net||(b.hit||0)-(a.hit||0))[0]||null;
+  return {resueltas:resolved.length, aciertos, errores:resolved.length-aciertos, hitRate,
+    vivas:opps.filter(o=>o.status==="abierta").length, caducadas:opps.filter(o=>o.status==="caducada").length,
+    per, best};
+}
+
+// Evolución del marcador: puntos acumulados del equipo en el tiempo.
+function evoPoints(el, events){
+  const ev=events.slice().sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  let cum=0; const pts=ev.map(e=>({t:e.created_at, v:(cum+=e.delta)}));
+  const W=el.clientWidth||600, H=120, pl=34, pr=12, pt=12, pb=20;
+  const vals=pts.map(p=>p.v), min=Math.min(0,...vals), max=Math.max(0,...vals), span=(max-min)||1;
+  const X=i=>pl+(W-pl-pr)*(pts.length===1?0.5:i/(pts.length-1));
+  const Y=v=>pt+(H-pt-pb)*(1-(v-min)/span);
+  const grid=getComputedStyle(document.body).getPropertyValue("--grid");
+  const blue=cssVal("var(--s1)"), zero=Y(0);
+  const path=vals.map((v,i)=>`${i?"L":"M"}${X(i)},${Y(v)}`).join(" ");
+  const dots=pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p.v)}" r="7" fill="transparent" data-tip="<div class='t1'>${p.v>0?'+':''}${p.v} pts</div><div class='t2'>${fmtDate(p.t)}</div>"></circle><circle cx="${X(i)}" cy="${Y(p.v)}" r="2.5" fill="${blue}" pointer-events="none"></circle>`).join("");
+  el.innerHTML=`<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}">
+    <line x1="${pl}" x2="${W-pr}" y1="${zero}" y2="${zero}" stroke="${grid}" stroke-width="1"/>
+    <text x="${pl-6}" y="${zero+3}" text-anchor="end" font-size="9" fill="var(--muted)">0</text>
+    <path d="${path}" fill="none" stroke="${blue}" stroke-width="2"/>${dots}</svg>`;
+  hookTips(el);
+}
 
 function renderAll(){ rKpis(); rAlerts(); rBriefing(); rAgentes(); rAprobaciones(); rOpps(); rCartera(); rMarcador(); rRegistro();
   const open=(DATA.opportunities||[]).filter(o=>o.status==="abierta").length;
@@ -831,7 +874,26 @@ function rMarcador(){
   const events=(DATA.score_events||[]);
   const calib=calibration();
   const anyCal=Object.values(calib).some(c=>c.n);
-  v.innerHTML=`<div class="grid2">
+  const tr=trackRecord();
+  const pct=r=>r==null?"—":Math.round(r*100)+"%";
+  const trTable = tr.per.filter(p=>p.res>0).sort((a,b)=>b.net-a.net||(b.hit||0)-(a.hit||0));
+  const trBlock=`<div class="card" style="margin-bottom:16px">
+    <p class="kicker">Track record del equipo</p>
+    <div class="tiles" style="margin-bottom:${tr.resueltas?"18px":"0"}">
+      <div class="tile"><div class="lbl">Predicciones resueltas</div><div class="val">${tr.resueltas}</div><div class="sub">${tr.aciertos} aciertos · ${tr.errores} fallos${tr.caducadas?` · ${tr.caducadas} caducadas`:""}</div></div>
+      <div class="tile"><div class="lbl">Acierto global</div><div class="val" style="color:${tr.hitRate==null?"var(--ink)":rateCol(tr.hitRate)}">${pct(tr.hitRate)}</div><div class="sub">sobre predicciones resueltas</div></div>
+      <div class="tile"><div class="lbl">En juego ahora</div><div class="val">${tr.vivas}</div><div class="sub">predicciones abiertas, aún sin resolver</div></div>
+      <div class="tile"><div class="lbl">Mejor agente</div><div class="val" style="font-size:19px">${tr.best?esc(AGENTS[tr.best.k].nm):"—"}</div><div class="sub">${tr.best?`${tr.best.net>0?"+":""}${tr.best.net} pts · ${pct(tr.best.hit)} acierto`:"aún sin datos"}</div></div>
+    </div>
+    ${events.length>=2?`<p class="kicker" style="margin-top:4px">Evolución del marcador</p><div id="evopts"></div>`:""}
+    ${trTable.length?`<table class="trtab"><thead><tr><th>Agente</th><th>Resueltas</th><th>Acierto</th><th>Puntos</th><th>Calibración</th></tr></thead><tbody>
+      ${trTable.map(p=>`<tr><td><span style="color:${AGENTS[p.k].c}">${AGENTS[p.k].icon}</span> ${esc(AGENTS[p.k].nm)}</td>
+        <td>${p.res}</td><td style="color:${p.hit==null?"var(--muted)":rateCol(p.hit)};font-weight:700">${pct(p.hit)}</td>
+        <td style="font-weight:700;color:${p.net>=0?"var(--delta-up)":"var(--critical)"}">${p.net>0?"+":""}${p.net}</td>
+        <td class="meta">${p.verd==="aprovecha"?"✓ aprovecha convicción":p.verd==="descalibrado"?"⚠ falla las fuertes":"—"}</td></tr>`).join("")}
+    </tbody></table>`:`<div class="empty" style="padding:14px 0">Aún no hay predicciones resueltas. Este historial se irá construyendo conforme Nexus resuelva las llamadas contra el precio real.</div>`}
+  </div>`;
+  v.innerHTML=trBlock+`<div class="grid2">
     <div class="card"><p class="kicker">Ranking del equipo</p>
       ${rows.map(([k,s])=>{
         const a=AGENTS[k]; const w=Math.abs(s.score)/maxAbs*100;
@@ -840,7 +902,7 @@ function rMarcador(){
         if(cal&&cal.n){
           const parts=[5,4,3,2,1].filter(c=>cal.byConv[c]).map(c=>{
             const b=cal.byConv[c], t=b.a+b.e;
-            return `<span title="Convicción ${c}: ${b.a} de ${t} acertadas">c${c} <b style="color:${rateCol(b.a/t)}">${b.a}/${t}</b></span>`;
+            return `<span title="Convicción ${c}: ${b.a} de ${t} acertadas">conv ${c} <b style="color:${rateCol(b.a/t)}">${b.a}/${t}</b></span>`;
           }).join('<i class="sep">·</i>');
           const verd=cal.veredicto==="aprovecha"?`<span class="cverd good">✓ aprovecha su convicción</span>`
             :cal.veredicto==="descalibrado"?`<span class="cverd bad">⚠ falla sus apuestas fuertes</span>`:"";
@@ -855,7 +917,7 @@ function rMarcador(){
             <div style="width:${Math.max(w,2)}%;background:${col};border-radius:4px"></div></div>
           ${calStrip}
         </div>`;}).join("")}
-      <div class="meta" style="margin-top:10px">El jefe (Nexus) otorga o resta puntos según el resultado real de cada llamada de los agentes.${anyCal?` <b>Calibración</b>: acierto por nivel de convicción (c5 = apuesta fuerte). Lo ideal es acertar más las fuertes que las flojas.`:` <b>Calibración</b>: aparecerá bajo cada agente según se resuelvan predicciones — medirá si aciertan cuando apuestan fuerte.`}</div>
+      <div class="meta" style="margin-top:10px">El jefe (Nexus) otorga o resta puntos según el resultado real de cada llamada de los agentes.${anyCal?` <b>Calibración</b>: acierto por nivel de convicción (conv 5 = apuesta fuerte). Lo ideal es acertar más las fuertes que las flojas.`:` <b>Calibración</b>: aparecerá bajo cada agente según se resuelvan predicciones — medirá si aciertan cuando apuestan fuerte.`}</div>
     </div>
     <div class="card"><p class="kicker">Últimos movimientos del marcador</p>
       ${events.length?events.slice(0,25).map(e=>{
@@ -867,6 +929,7 @@ function rMarcador(){
         `<div class="empty">Sin valoraciones todavía. Cuando las oportunidades se resuelvan, Nexus puntuará a cada agente aquí.</div>`}
     </div>
   </div>`;
+  if(events.length>=2){ const ep=$("#evopts"); if(ep) evoPoints(ep, events); }
 }
 
 /* ═══════════ REGISTRO ═══════════ */
