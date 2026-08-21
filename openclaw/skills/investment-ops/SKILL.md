@@ -143,6 +143,26 @@ Corrige y reintenta; no sigas como si nada.
 línea. Si se cae a medias, ciérrala igual con `failed` y el error en el `summary`: una
 ronda eternamente en `running` deja el panel mintiendo.
 
+## Aviso al usuario al terminar la ronda
+
+Cuando la ronda la dispara el cron (o el usuario pide correrla), el **mensaje que le
+llega** no es el JSON ni el volcado del panel: es un único mensaje que **empieza por los
+avisos del día** —lo que de verdad quiere saber sin abrir el panel— y luego el briefing.
+
+Cuenta como **aviso** y va destacado arriba con emoji:
+
+- **Predicción resuelta hoy** — acierto ✅ o error ❌ — con agente, símbolo, **puntos
+  ganados/perdidos** y el **precio real** que la resolvió. Es lo más importante: el marcador
+  se movió.
+- **Nueva oportunidad de convicción 4-5** 🔥 — agente, símbolo y objetivo. Las apuestas
+  fuertes del día.
+- **La ronda falló o una fuente se cayó** ⚠️ — con el motivo, para que sepa que ese día los
+  datos van cojos.
+
+Si no pasó nada de eso, una sola línea: **"✅ Ronda OK, sin novedades relevantes"** — así
+confirma que la ronda corrió (silencio total escondería un fallo). Nada de spam: cuando no
+hay señal, una línea basta. Después del bloque de avisos, el briefing (resumen + highlights).
+
 ## Resumen semanal del marcador (domingos)
 
 Los **domingos**, además del briefing diario y antes de cerrar la ronda, Nexus publica un
