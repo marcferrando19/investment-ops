@@ -76,6 +76,11 @@ Corrige y reintenta; no sigas como si nada.
   `horizon` (fecha o ventana en la que debe cumplirse) y `entry_ref_price` **al precio
   actual de mercado**. Sin objetivo y `horizon` medibles no es una oportunidad: concrétala
   o no la abras.
+- **Cierra la `thesis` con el objetivo en formato fijo**, en su propia línea al final:
+  `Objetivo: <precio> <moneda> (<±%>)` — p.ej. `Objetivo: 210 USD (+11%)`. Si el objetivo
+  es un movimiento en % sin precio concreto, `Objetivo: +10%`. Ese formato con dos puntos
+  es lo que el panel lee para mostrar "Ref. entrada → Objetivo" limpio; sin él, la
+  oportunidad sale con "— sin objetivo".
 - **Raciona la convicción.** Como mucho **una** oportunidad de `conviction: 5` por
   especialista y ronda: la convicción 5 es tu apuesta del día, no la etiqueta por defecto.
   Si todo te parece un 5, nada lo es — y como el 5 puntúa doble al acertar y al fallar,

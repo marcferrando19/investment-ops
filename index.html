@@ -177,6 +177,14 @@
   .conv i.f{background:var(--ac)}
   .opp .thesis{margin-top:10px;font-size:13.5px;color:var(--ink-2);line-height:1.5}
   .opp .risks{margin-top:8px;font-size:12.5px;color:var(--muted);line-height:1.45}
+  .opp .predl{margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    background:var(--surface-2);border:1px solid var(--hairline);border-radius:10px;padding:9px 13px}
+  .opp .predl i{font-style:normal;font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:2px}
+  .opp .predl b{font-weight:700;font-variant-numeric:tabular-nums;font-size:14px;display:block}
+  .opp .predl .pl-e b{color:var(--ink-2)}
+  .opp .predl .pl-o b{color:var(--s1)}
+  .opp .predl .pl-o b.na{color:var(--muted);font-weight:500}
+  .opp .predl .pl-arrow{color:var(--muted);font-size:17px;line-height:1}
   .opp .foot{margin-top:10px;font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
 
   /* tables */
@@ -319,6 +327,32 @@ const fmtN = (n,d=2) => n==null?"—":Number(n).toLocaleString("es-ES",{minimumF
 const fmtEUR = n => n==null?"—":Number(n).toLocaleString("es-ES",{style:"currency",currency:"EUR",maximumFractionDigits:0});
 const fmtDate = s => s?new Date(s).toLocaleString("es-ES",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—";
 const fmtDay = s => s?new Date(s).toLocaleDateString("es-ES",{weekday:"long",day:"numeric",month:"long"}):"—";
+// Extrae el objetivo de la tesis. Formato fijo nuevo: "Objetivo: 326 USD (+24%)"
+// (con dos puntos → fuente fiable). Para las heredadas en prosa es conservador:
+// exige moneda en el precio (años y márgenes no la llevan) y descarta usos de la
+// palabra que no son precio-objetivo ("objetivo-vencimiento", "objetivo de margen").
+function parseObjetivo(thesis){
+  if(!thesis) return null;
+  const t=String(thesis);
+  let seg, strict=false;
+  const std=t.match(/objetivo\s*:\s*([^.\n;]{1,40})/i);
+  if(std){ seg=std[1]; strict=true; }
+  else {
+    const low=t.toLowerCase(), i=low.indexOf("objetivo");
+    if(i<0) return null;
+    if(/^[-\s]*(vencimiento|de\s+(margen|rentab|deuda|inflaci|precios))/.test(low.slice(i+8, i+8+16))) return null;
+    seg=t.slice(i+8, i+8+45);
+  }
+  const cur=/€|\bEUR\b/i.test(seg)?"EUR":(/\$|\bUSD\b/i.test(seg)?"USD":"");
+  const noPct=seg.replace(/([+-]?\s*\d+(?:[.,]\d+)?)\s*%/g," ");
+  const priceM=noPct.match(/(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?)/);
+  let price=priceM?priceM[1]:null;
+  if(price && !cur && !strict) price=null;          // en prosa, sin moneda no es precio
+  const pctM=seg.match(/([+-]\s*\d+(?:[.,]\d+)?)\s*%/) || (strict?seg.match(/(\d+(?:[.,]\d+)?)\s*%/):null);
+  const pct=pctM?pctM[1].replace(/\s+/g,"")+"%":"";  // en prosa, sólo % con signo (+/-)
+  if(!price && !pct) return null;
+  return {price, cur, pct};
+}
 
 /* minimal safe markdown */
 function md(src){
@@ -625,6 +659,9 @@ function rOpps(){
     (list.length?list.map(o=>{
       const a=AGENTS[o.agent]||{nm:o.agent,c:"var(--s8)",icon:"◇"};
       const conv=o.conviction||0;
+      const obj=parseObjetivo(o.thesis);
+      const entrada=o.entry_ref_price!=null?`${fmtN(o.entry_ref_price)} ${esc(o.ref_currency||"")}`.trim():"—";
+      const objetivo=obj?(obj.price?esc(obj.price)+(obj.cur?" "+obj.cur:"")+(obj.pct?" ("+esc(obj.pct)+")":""):esc(obj.pct)):"";
       return `<div class="opp" style="--ac:${a.c}">
         <div class="row1"><span class="sym">${esc(o.name)}${o.symbol?` <span style="color:var(--muted);font-weight:400">· ${esc(o.symbol)}</span>`:""}</span>
           <span class="tag">${a.icon} ${a.nm}</span>
@@ -633,8 +670,12 @@ function rOpps(){
         <div class="thesis"><strong style="color:var(--ink)">Tesis:</strong> ${esc(o.thesis)}</div>
         ${o.risks?`<div class="risks"><strong>Riesgos:</strong> ${esc(o.risks)}</div>`:""}
         ${o.outcome_note?`<div class="risks"><strong>Resolución:</strong> ${esc(o.outcome_note)}</div>`:""}
+        <div class="predl">
+          <span class="pl-e"><i>Ref. entrada</i><b>${entrada}</b></span>
+          <span class="pl-arrow">→</span>
+          <span class="pl-o"><i>Objetivo</i>${objetivo?`<b>${objetivo}</b>`:`<b class="na">— sin objetivo</b>`}</span>
+        </div>
         <div class="foot"><span>${fmtDate(o.opened_at)}</span>${o.horizon?`<span>Horizonte: ${esc(o.horizon)}</span>`:""}
-          ${o.entry_ref_price?`<span>Ref. entrada: ${fmtN(o.entry_ref_price)} ${esc(o.ref_currency||"")}</span>`:""}
           <span>${CLASSES[o.asset_class]||o.asset_class}</span></div>
       </div>`;
     }).join(""):`<div class="card"><div class="empty"><div class="big">◈</div>No hay oportunidades con estos filtros.<br>Los especialistas registrarán aquí cada oportunidad justificada que encuentren.</div></div>`);
