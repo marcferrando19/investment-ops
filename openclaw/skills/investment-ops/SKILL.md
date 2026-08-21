@@ -105,6 +105,13 @@ investigación y los `POST /report`/`/opportunity` aquí, en línea. Para cada u
   correcto, no un fallo. **No** levantes `precios_renta_fija` ni `precios_apollo` por eso —
   es ruido esperado. Solo levanta un aviso de precios si una posición **líquida** (acciones,
   ETFs de bolsa, crypto) lleva días sin actualizar o si tienes un dato que claramente no cuadra.
+- **Pero las líquidas van todas, sin excepción.** EUNL, SXR8, XMME y SPCX cotizan a diario y
+  son el grueso de la cartera: si te saltas una, el total se congela sin que se note. Antes de
+  cerrar tu tarea comprueba que ninguna posición líquida se ha quedado con el `updated_at` de
+  días anteriores; si de alguna no encuentras precio, **dilo en el informe y levanta
+  `precio_<symbol>`** en vez de dejarla envejecer callando.
+- `current_value` tiene que ser `quantity × current_price`. Envía ambos y cuadrados: el
+  panel suma valores, así que un precio nuevo con un valor viejo descuadra el total.
 - **Regla estricta**: Ledger solo toca precio y valor. Jamás cantidades, precios de
   compra, altas ni bajas de posiciones. La API tampoco se lo permite — si necesitas eso,
   es una propuesta para el usuario, no un cambio que haces tú.
@@ -206,6 +213,11 @@ Esto no reparte puntos nuevos: solo lee lo ya resuelto y lo depura. `highlights`
 ## Cola de aprobación
 
 Cuando algo necesite la decisión del usuario y no la tuya, no lo ejecutes: propónlo.
+
+**Antes de crear una, mira `GET /approvals?status=pendiente`.** Si ya hay una pendiente
+sobre el mismo asunto, **no crees otra**: sigue esperando su decisión y, como mucho,
+menciónalo en el briefing. Proponer cada día lo mismo convierte la cola en ruido y
+entierra lo que sí es nuevo.
 
 ```bash
 curl -sS -X POST "$IT_OPS_URL/approval" \
