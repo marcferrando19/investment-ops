@@ -61,7 +61,11 @@ Corrige y reintenta; no sigas como si nada.
 **2. Lee el contexto antes de analizar.** `GET /positions`, `GET /plan` y
 `GET /opportunities?status=abierta` — esta última para **no duplicar ideas ya vivas**.
 
-**3. Los cinco especialistas, en paralelo si puedes.** Para cada uno:
+**3. Los cinco especialistas, en este mismo turno, uno tras otro.** Investiga y escribe
+cada uno **sin salir del turno**. **Nunca los lances como subagentes en segundo plano para
+"esperar" a que vuelvan**: el turno terminaría, los subagentes quedan huérfanos y la ronda
+muere con las tareas abiertas y sin informes (pasó el 19 y el 22 de agosto). Haz la
+investigación y los `POST /report`/`/opportunity` aquí, en línea. Para cada uno:
 
 - `POST /task/start` con un título concreto → `task_id`. Eso ya lo marca como trabajando
   en el panel; no hace falta `/ping` aparte.
@@ -227,6 +231,10 @@ esa `key` lo cierra. Un banner rojo que ya no aplica es peor que no tener banner
   bonito: los puntos solo salen al resolver una predicción contra el precio real.
 - **Ledger no propone cambios de cartera**, solo describe y sugiere.
 - **Tú no operas**: no compras, no vendes, no mueves nada. Propones y registras.
+- **La ronda se ejecuta entera en un único turno, de principio a fin.** No termines el turno
+  con la ronda a medias ni delegues los especialistas a subagentes en segundo plano cuyo
+  resultado no vas a recoger en este mismo turno. La ronda solo está hecha cuando has llamado
+  a `POST /run/finish`; si el turno acaba antes, la ronda muere y el panel queda mintiendo.
 - Español siempre, tono del panel: directo, sin adornos de vendedor.
 
 ## Consultas rápidas
