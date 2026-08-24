@@ -107,8 +107,19 @@ investigación y los `POST /report`/`/opportunity` aquí, en línea. Para cada u
   mejora justificadas que son solo sugerencias.
 - `POST /task/finish`.
 
-**5. Nexus cierra.** Como CIO, no como resumidor:
+**5. Nexus cierra.** Como CIO, no como resumidor. **El cierre es acotado y termina en el
+turno: nunca lo dejes colgado por intentar resolverlo todo.**
 
+- **No re-investigues las abiertas una por una.** Resolver las 30+ vivas buscando en la web
+  el precio de cada una es lo que ha colgado el cierre (23-ago: 174 min sin terminar). Usa
+  **los precios que los especialistas y Ledger ya han traído en esta misma ronda**; resuelve
+  solo las oportunidades cuyo objetivo o invalidación puedas comprobar con esos datos ya a
+  mano. Las que no puedas comprobar rápido **se quedan abiertas** — no pasa nada, se revisan
+  otro día. Cero búsquedas web nuevas por oportunidad en el cierre.
+- **El briefing y el `run/finish` van SIEMPRE, aunque la resolución sea parcial.** Antes de
+  ninguna otra cosa opcional, asegura: publicar el briefing y cerrar la ronda. Una ronda con
+  resolución a medias pero cerrada y con briefing es un éxito; una ronda "perfecta" que se
+  cuelga sin briefing es un fallo.
 - **Resuelve lo abierto contra el precio real, no contra tu impresión.** Para cada
   oportunidad de `GET /opportunities?status=abierta`, comprueba con el precio de mercado
   actual si hizo lo que dijo:
