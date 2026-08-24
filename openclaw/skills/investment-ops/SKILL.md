@@ -99,6 +99,12 @@ investigación y los `POST /report`/`/opportunity` aquí, en línea. Para cada u
   `POST /position/price` (`{"symbol":"EUNL","current_price":…,"current_value":…}`).
   Para el Apollo usa el último NAV conocido si no hay uno nuevo. El efectivo no cambia
   salvo que el usuario lo diga.
+- **Lentos e ilíquidos: valóralos a último precio conocido y NO levantes aviso.** El Apollo
+  ELTIF (NAV mensual/trimestral con retardo) y los bonos **EUN5** e **IBND26** (apenas se
+  mueven, y las cotizaciones web no cuadran con el libro) se quedan a su último precio: es
+  correcto, no un fallo. **No** levantes `precios_renta_fija` ni `precios_apollo` por eso —
+  es ruido esperado. Solo levanta un aviso de precios si una posición **líquida** (acciones,
+  ETFs de bolsa, crypto) lleva días sin actualizar o si tienes un dato que claramente no cuadra.
 - **Regla estricta**: Ledger solo toca precio y valor. Jamás cantidades, precios de
   compra, altas ni bajas de posiciones. La API tampoco se lo permite — si necesitas eso,
   es una propuesta para el usuario, no un cambio que haces tú.
