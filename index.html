@@ -582,8 +582,47 @@ function rKpis(){
     <div class="val ${t.cls||""}">${t.val}</div></div>`).join("");
 }
 
+/* Avisos que el panel deduce solo, sin depender de que un agente los levante
+   ni los mantenga: si el dato está rancio, se ve, aunque nadie lo haya contado. */
+function derivedAlerts(){
+  const out=[];
+  const horas = iso => iso ? (Date.now()-new Date(iso).getTime())/3600000 : Infinity;
+
+  const rancias=(DATA.positions||[])
+    .filter(p=>p.asset_class!=="cash" && horas(p.updated_at)>48)
+    .sort((a,b)=>horas(b.updated_at)-horas(a.updated_at));
+  if(rancias.length){
+    const peor=Math.round(horas(rancias[0].updated_at)/24);
+    const valor=rancias.reduce((s,p)=>s+Number(p.current_value||0),0);
+    out.push({
+      level: peor>=5 ? "critica" : "aviso",
+      message: `${rancias.length} posicion${rancias.length===1?"":"es"} sin precio nuevo (${fmtEUR(valor)}, hasta ${peor} día${peor===1?"":"s"}): ${rancias.map(p=>esc(p.symbol||p.name)).join(", ")}`,
+      action_hint: "El valor total de la cartera incluye estos precios viejos. Deducido de las fechas de actualización, no de un aviso de los agentes."
+    });
+  }
+
+  const ultima=(DATA.runs||[]).find(r=>r.status==="completed");
+  if(!ultima || horas(ultima.finished_at||ultima.started_at)>30){
+    out.push({
+      level:"critica",
+      message:"No hay ninguna ronda completada en las últimas 30 horas.",
+      action_hint:"El análisis del panel no es de hoy."
+    });
+  }
+
+  const encurso=(DATA.runs||[]).find(r=>r.status==="running");
+  if(encurso && horas(encurso.started_at)>2){
+    out.push({
+      level:"aviso",
+      message:`La ronda de ${fmtDate(encurso.started_at)} lleva ${Math.round(horas(encurso.started_at))} h abierta sin cerrarse.`,
+      action_hint:"Probablemente la sesión murió a medias; lo escrito hasta ahora sí es válido."
+    });
+  }
+  return out;
+}
+
 function rAlerts(){
-  const list=(DATA.alerts||[]).filter(a=>a.status==="activa");
+  const list=[...derivedAlerts(), ...(DATA.alerts||[]).filter(a=>a.status==="activa")];
   const color={critica:"var(--critical)", aviso:"var(--warning)", info:"var(--s1)"};
   const icon={critica:"⬤", aviso:"▲", info:"●"};
   $("#alerts").innerHTML = list.map(a=>`<div class="alertbar" style="--ac:${color[a.level]||"var(--warning)"}">
