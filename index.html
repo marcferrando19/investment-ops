@@ -588,8 +588,11 @@ function derivedAlerts(){
   const out=[];
   const horas = iso => iso ? (Date.now()-new Date(iso).getTime())/3600000 : Infinity;
 
+  /* Solo posiciones líquidas: la renta fija y el private markets se valoran a
+     último precio conocido a propósito, no es un fallo. Y 72 h en vez de 48
+     para que un fin de semana no levante el banner por sí solo. */
   const rancias=(DATA.positions||[])
-    .filter(p=>p.asset_class!=="cash" && horas(p.updated_at)>48)
+    .filter(p=>!["cash","renta_fija","private_markets"].includes(p.asset_class) && horas(p.updated_at)>72)
     .sort((a,b)=>horas(b.updated_at)-horas(a.updated_at));
   if(rancias.length){
     const peor=Math.round(horas(rancias[0].updated_at)/24);
@@ -597,7 +600,7 @@ function derivedAlerts(){
     out.push({
       level: peor>=5 ? "critica" : "aviso",
       message: `${rancias.length} posicion${rancias.length===1?"":"es"} sin precio nuevo (${fmtEUR(valor)}, hasta ${peor} día${peor===1?"":"s"}): ${rancias.map(p=>esc(p.symbol||p.name)).join(", ")}`,
-      action_hint: "El valor total de la cartera incluye estos precios viejos. Deducido de las fechas de actualización, no de un aviso de los agentes."
+      action_hint: "Son posiciones que cotizan a diario, así que esto sí es un descuido. Deducido de las fechas de actualización, no de un aviso de los agentes."
     });
   }
 
