@@ -910,79 +910,115 @@ function lineChart(el, snaps){
   hookTips(el);
 }
 
-/* ═══════════ SIMULADOR · CLAUDE TRADING (paper trading, dinero ficticio) ═══════════ */
+/* ═══════════ SIMULADOR · CLAUDE TRADING · Duelo A vs B (paper trading, dinero ficticio) ═══════════ */
+const SIMAG={A:{nm:"Agente A",estilo:"Selectivo · 2 sesiones/día, máx. 3 operaciones",col:"var(--s4)"},
+             B:{nm:"Agente B",estilo:"Intradía · cada hora (7-23h), sin límite de operaciones",col:"var(--s7)"}};
+const simEur=n=>n==null?"—":Number(n).toLocaleString("es-ES",{style:"currency",currency:"EUR",minimumFractionDigits:2,maximumFractionDigits:2});
+const simPct=S=>S&&S.capital_inicial?(S.valor_total-S.capital_inicial)/S.capital_inicial*100:0;
+
 function rSimulador(){
-  const v=$("#v-simulador"); const S=DATA.sim;
-  if(!S){ v.innerHTML=`<div class="card"><div class="empty"><div class="big">⬒</div>El simulador aún no ha publicado datos.<br>La primera sesión de trading los enviará aquí automáticamente.</div></div>`; return; }
-  const eur2=n=>n==null?"—":Number(n).toLocaleString("es-ES",{style:"currency",currency:"EUR",minimumFractionDigits:2,maximumFractionDigits:2});
-  const pos=S.posiciones||[], ops=S.operaciones||[], hist=S.historial||[];
-  const pnl=S.valor_total-S.capital_inicial, pct=S.capital_inicial?pnl/S.capital_inicial*100:0;
-  const vsB=S.valor_total-(S.benchmark_btc_valor||S.capital_inicial);
-  const inv=pos.reduce((a,p)=>a+p.cantidad*p.precio_actual,0);
+  const v=$("#v-simulador"); const A=DATA.sim, B=DATA.sim_b;
+  if(!A&&!B){ v.innerHTML=`<div class="card"><div class="empty"><div class="big">⬒</div>El simulador aún no ha publicado datos.</div></div>`; return; }
+  const pA=simPct(A), pB=simPct(B);
+  let duelo="Un solo agente en juego por ahora.";
+  if(A&&B){
+    const d=A.valor_total-B.valor_total;
+    duelo = Math.abs(d)<0.005 ? "Empate técnico." :
+      `Va ganando <b style="color:${d>0?SIMAG.A.col:SIMAG.B.col}">${d>0?"el Agente A":"el Agente B"}</b> por ${simEur(Math.abs(d))}.`;
+  }
+  const dueloTile=(S,ag)=>{
+    const pct=simPct(S);
+    return `<div class="tile" style="--accent:${ag.col}">
+      <div class="lbl"><span style="color:${ag.col}">●</span> ${ag.nm.toUpperCase()}</div>
+      <div class="val">${S?simEur(S.valor_total):"—"}</div>
+      <div class="sub" style="color:${pct>=0?"var(--delta-up)":"var(--critical)"}">${S?`${pct>=0?"▲":"▼"} ${fmtN(Math.abs(pct),2)}% · sesión ${S.sesion??0}`:"sin datos"}</div>
+      <div class="sub" style="color:var(--muted)">${ag.estilo}</div></div>`;
+  };
+  const ref=A||B;
   v.innerHTML=`
   <div class="alertbar" style="--ac:var(--warning);margin-bottom:14px">
     <span class="ico">⬒</span>
-    <span class="msg">Entorno 100% simulado: dinero ficticio con precios y comisiones reales (Kraken spot, 0,40%).
-      <span class="hint">Experimento CLAUDE TRADING · totalmente separado de la cartera real · sesiones a las 8:00 y 20:00</span></span>
+    <span class="msg">Entorno 100% simulado: dos agentes compiten con 500 € ficticios cada uno, precios y comisiones reales (Kraken spot, 0,40%).
+      <span class="hint">El experimento: paciencia (A) contra actividad (B), mismas reglas de riesgo. Totalmente separado de la cartera real.</span></span>
     <span class="lv">Simulado</span>
   </div>
-  <div class="tiles">
-    <div class="tile"><div class="lbl">Valor simulado</div><div class="val">${eur2(S.valor_total)}</div>
-      <div class="sub" style="color:${pnl>=0?"var(--delta-up)":"var(--critical)"}">${pnl>=0?"▲":"▼"} ${eur2(Math.abs(pnl))} (${fmtN(pct,2)}%) desde el inicio</div></div>
-    <div class="tile"><div class="lbl">Vs. BTC hold</div><div class="val" style="color:${vsB>=0?"var(--delta-up)":"var(--critical)"}">${vsB>=0?"+":"−"}${eur2(Math.abs(vsB)).replace("-","")}</div>
-      <div class="sub">benchmark: ${eur2(S.benchmark_btc_valor)}</div></div>
-    <div class="tile"><div class="lbl">Efectivo</div><div class="val">${eur2(S.efectivo)}</div>
-      <div class="sub">invertido: ${eur2(inv)}</div></div>
-    <div class="tile"><div class="lbl">Comisiones</div><div class="val">${eur2(S.comisiones)}</div>
-      <div class="sub">${ops.length} operaciones · sesión ${S.sesion??"—"}</div></div>
+  <div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+    ${dueloTile(A,SIMAG.A)}
+    <div class="tile"><div class="lbl">Duelo</div>
+      <div style="font-size:14.5px;margin-top:8px;line-height:1.5">${duelo}</div>
+      <div class="sub" style="margin-top:6px">Benchmark BTC comprado-y-mantenido: <b>${simEur(ref?.benchmark_btc_valor)}</b></div></div>
+    ${dueloTile(B,SIMAG.B)}
   </div>
-  ${hist.length>1?`<div class="card"><p class="kicker">Evolución · cartera simulada vs BTC comprado-y-mantenido</p><div class="chartbox" id="simchart"></div></div>`:""}
-  <div class="card"><p class="kicker">Posiciones abiertas (${pos.length})</p>
-    ${pos.length?`<div style="overflow-x:auto"><table class="trtab">
-      <thead><tr><th>Activo</th><th>Cantidad</th><th>Entrada</th><th>Actual</th><th>Stop-loss</th><th>Valor</th><th>P&amp;L</th></tr></thead>
-      <tbody>${pos.map(p=>{const val=p.cantidad*p.precio_actual, pl=val-p.invertido_neto, plp=p.invertido_neto?pl/p.invertido_neto*100:0;
-        return `<tr><td><b style="color:var(--ink)">${esc(p.activo)}</b></td><td>${fmtN(p.cantidad,8)}</td><td>${eur2(p.precio_entrada)}</td><td>${eur2(p.precio_actual)}</td><td>${eur2(p.stop)}</td><td>${eur2(val)}</td>
-        <td><span class="badge ${pl>=0?"acierto":"error"}">${pl>=0?"+":""}${fmtN(plp,2)}%</span></td></tr>`;}).join("")}</tbody>
-    </table></div>`:`<div class="readonly">Sin posiciones abiertas — todo en efectivo.</div>`}
-  </div>
-  <div class="card"><p class="kicker">Operaciones</p>
-    ${ops.length?`<div style="overflow-x:auto"><table class="trtab">
-      <thead><tr><th>Fecha</th><th>Tipo</th><th>Activo</th><th>Cantidad</th><th>Precio</th><th>Importe</th><th>Comisión</th><th style="text-align:left">Motivo</th></tr></thead>
-      <tbody>${ops.slice().reverse().map(o=>`<tr><td>${esc(o.fecha)}</td>
-        <td><span class="badge ${o.tipo==="COMPRA"?"acierto":"error"}">${esc(o.tipo)}</span></td>
-        <td><b style="color:var(--ink)">${esc(o.activo)}</b></td><td>${fmtN(o.cantidad,8)}</td><td>${eur2(o.precio)}</td><td>${eur2(o.importe)}</td><td>${eur2(o.comision)}</td>
-        <td style="text-align:left;max-width:320px;color:var(--muted)">${esc(o.motivo)}</td></tr>`).join("")}</tbody>
-    </table></div>`:`<div class="readonly">Aún no hay operaciones.</div>`}
-  </div>
-  <div class="card"><p class="kicker">Última sesión</p>
-    <div style="font-size:13.5px;color:var(--ink-2);line-height:1.55">${esc(S.nota_sesion||"—")}</div>
-    <div class="meta" style="margin-top:8px">Actualizado: ${esc(String(S.actualizado||"—"))} · el diario completo vive en la carpeta CLAUDE TRADING</div>
+  <div class="card"><p class="kicker">Rendimiento desde el inicio · % sobre los 500 € de cada agente</p><div class="chartbox" id="simduelchart"></div></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;margin-top:16px">
+    ${simAgentCard(A,SIMAG.A)}${simAgentCard(B,SIMAG.B)}
   </div>`;
-  if(hist.length>1) simChart($("#simchart"), hist);
+  simDuelChart($("#simduelchart"), A, B);
 }
 
-function simChart(el, hist){
-  const W=el.clientWidth||800, H=150, pl=48, pr=14, pt=12, pb=22;
-  const vals=hist.flatMap(h=>[Number(h.cartera),Number(h.btc_hold)]);
-  const min=Math.min(...vals), max=Math.max(...vals), span=(max-min)||1;
-  const X=i=>pl+(W-pl-pr)*(hist.length===1?0.5:i/(hist.length-1));
+function simAgentCard(S, ag){
+  if(!S) return `<div class="card"><p class="kicker"><span style="color:${ag.col}">●</span> ${ag.nm} · ${ag.estilo}</p><div class="readonly">Aún sin datos.</div></div>`;
+  const pos=S.posiciones||[], ops=(S.operaciones||[]).slice(-6).reverse();
+  const inv=pos.reduce((a,p)=>a+p.cantidad*p.precio_actual,0);
+  return `<div class="card" style="border-top:2px solid ${ag.col}">
+    <p class="kicker"><span style="color:${ag.col}">●</span> ${ag.nm} · ${ag.estilo}</p>
+    <div class="meta" style="margin-bottom:10px">Efectivo <b>${simEur(S.efectivo)}</b> · Invertido <b>${simEur(inv)}</b> · Comisiones <b>${simEur(S.comisiones)}</b> · ${(S.operaciones||[]).length} operaciones</div>
+    ${pos.length?`<div style="overflow-x:auto"><table class="trtab">
+      <thead><tr><th>Activo</th><th>Cantidad</th><th>Entrada</th><th>Stop</th><th>P&amp;L</th></tr></thead>
+      <tbody>${pos.map(p=>{const val=p.cantidad*p.precio_actual, pl=val-p.invertido_neto, plp=p.invertido_neto?pl/p.invertido_neto*100:0;
+        return `<tr><td><b style="color:var(--ink)">${esc(p.activo)}</b></td><td>${fmtN(p.cantidad,6)}</td><td>${simEur(p.precio_entrada)}</td><td>${simEur(p.stop)}</td>
+        <td><span class="badge ${pl>=0?"acierto":"error"}">${pl>=0?"+":""}${fmtN(plp,2)}%</span></td></tr>`;}).join("")}</tbody>
+    </table></div>`:`<div class="readonly">Sin posiciones abiertas — todo en efectivo.</div>`}
+    ${ops.length?`<p class="kicker" style="margin-top:14px">Últimas operaciones</p>
+    <div style="overflow-x:auto"><table class="trtab"><tbody>${ops.map(o=>`<tr>
+      <td style="white-space:nowrap">${esc(o.fecha)}</td>
+      <td><span class="badge ${o.tipo==="COMPRA"?"acierto":"error"}">${esc(o.tipo)}</span></td>
+      <td><b style="color:var(--ink)">${esc(o.activo)}</b></td><td>${simEur(o.importe)}</td></tr>`).join("")}</tbody></table></div>`:""}
+    <div style="margin-top:12px;font-size:13px;color:var(--ink-2);line-height:1.5">${esc(S.nota_sesion||"")}</div>
+    <div class="meta" style="margin-top:6px">Actualizado: ${esc(String(S.actualizado||"—"))}</div>
+  </div>`;
+}
+
+function simDuelChart(el, A, B){
+  const cap=S=>S?.capital_inicial||500;
+  const mk=(S,key)=>(S&&S.historial||[]).map((h,i)=>({t:h.ts?Date.parse(h.ts):null, v:(Number(h[key])-cap(S))/cap(S)*100, et:h.etiqueta||""}));
+  const series=[];
+  const refBtc=(A&&A.historial&&A.historial.length?A:B);
+  if(refBtc) series.push({nm:"BTC hold", col:cssVal("var(--s1)"), pts:mk(refBtc,"btc_hold")});
+  if(A) series.push({nm:"Agente A", col:cssVal("var(--s4)"), pts:mk(A,"cartera")});
+  if(B) series.push({nm:"Agente B", col:cssVal("var(--s7)"), pts:mk(B,"cartera")});
+  const total=series.reduce((a,s)=>a+s.pts.length,0);
+  if(total<2){ el.innerHTML=`<div class="readonly">El gráfico aparecerá cuando haya al menos dos sesiones registradas.</div>`; return; }
+  const W=el.clientWidth||800, H=180, pl=52, pr=14, pt=12, pb=24;
+  const all=series.flatMap(s=>s.pts.map(p=>p.v));
+  let min=Math.min(0,...all), max=Math.max(0,...all);
+  if(max-min<0.6){ max+=0.3; min-=0.3; }
+  const span=max-min;
+  const ts=series.flatMap(s=>s.pts.filter(p=>p.t!=null).map(p=>p.t));
+  const t0=ts.length?Math.min(...ts):0, t1=ts.length?Math.max(...ts):1;
+  const fx=(s,i)=>{const p=s.pts[i];
+    if(p.t!=null && t1>t0) return (p.t-t0)/(t1-t0);
+    return s.pts.length===1?0.5:i/(s.pts.length-1);};
+  const X=(s,i)=>pl+(W-pl-pr)*fx(s,i);
   const Y=v=>pt+(H-pt-pb)*(1-(v-min)/span);
   const ink=getComputedStyle(document.body).getPropertyValue("--muted");
   const grid=getComputedStyle(document.body).getPropertyValue("--grid");
-  const cA=cssVal("var(--s4)"), cB=cssVal("var(--s1)");
-  let gl="";
+  let out="";
   for(let g=0;g<=3;g++){ const yv=min+span*g/3, yy=Y(yv);
-    gl+=`<line x1="${pl}" x2="${W-pr}" y1="${yy}" y2="${yy}" stroke="${grid}" stroke-width="1"/>
-    <text x="${pl-8}" y="${yy+4}" text-anchor="end" font-size="10" fill="${ink}">${fmtN(yv,span<4?2:0)} €</text>`; }
-  const line=(key,col,nm)=>{
-    const path=hist.map((h,i)=>`${i?"L":"M"}${X(i)},${Y(h[key])}`).join(" ");
-    const dots=hist.map((h,i)=>`<circle cx="${X(i)}" cy="${Y(h[key])}" r="8" fill="transparent"
-      data-tip="<div class='t1'>${nm} · ${Number(h[key]).toLocaleString("es-ES",{minimumFractionDigits:2})} €</div><div class='t2'>${esc(h.etiqueta)}</div>"></circle>
-      <circle cx="${X(i)}" cy="${Y(h[key])}" r="2.5" fill="${col}" pointer-events="none"></circle>`).join("");
-    return `<path d="${path}" fill="none" stroke="${col}" stroke-width="2"/>${dots}`;
-  };
-  el.innerHTML=`<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}">${gl}${line("btc_hold",cB,"BTC hold")}${line("cartera",cA,"Cartera")}</svg>
-  <div class="legend"><span><i style="background:${cA}"></i>Cartera simulada</span><span><i style="background:${cB}"></i>BTC comprado-y-mantenido</span></div>`;
+    out+=`<line x1="${pl}" x2="${W-pr}" y1="${yy}" y2="${yy}" stroke="${grid}" stroke-width="1"/>
+    <text x="${pl-8}" y="${yy+4}" text-anchor="end" font-size="10" fill="${ink}">${yv>0?"+":""}${fmtN(yv,1)}%</text>`; }
+  const z=Y(0);
+  out+=`<line x1="${pl}" x2="${W-pr}" y1="${z}" y2="${z}" stroke="${ink}" stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/>`;
+  series.forEach(s=>{
+    if(!s.pts.length) return;
+    const path=s.pts.map((p,i)=>`${i?"L":"M"}${X(s,i)},${Y(p.v)}`).join(" ");
+    out+=`<path d="${path}" fill="none" stroke="${s.col}" stroke-width="2" stroke-linejoin="round"/>`;
+    out+=s.pts.map((p,i)=>`<circle cx="${X(s,i)}" cy="${Y(p.v)}" r="8" fill="transparent"
+      data-tip="<div class='t1'>${s.nm} · ${p.v>=0?"+":""}${fmtN(p.v,2)}%</div><div class='t2'>${esc(p.et)}</div>"></circle>
+      <circle cx="${X(s,i)}" cy="${Y(p.v)}" r="2.5" fill="${s.col}" pointer-events="none"></circle>`).join("");
+  });
+  el.innerHTML=`<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}">${out}</svg>
+  <div class="legend">${series.map(s=>`<span><i style="background:${s.col}"></i>${s.nm}</span>`).join("")}</div>`;
   hookTips(el);
 }
 
